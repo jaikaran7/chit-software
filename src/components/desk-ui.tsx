@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react'
 
 export function DeskCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
@@ -57,6 +57,81 @@ export function avatarTone(name: string): 'rose' | 'teal' | 'slate' | 'blue' {
 
 export function FieldLabel({ children }: { children: ReactNode }) {
   return <p className="mb-2 text-sm font-medium text-slate-500">{children}</p>
+}
+
+export function DeskSelect({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const selected = options.find((option) => option.value === value)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(event: MouseEvent) {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={root} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-11 w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 text-left text-base font-semibold text-slate-900"
+      >
+        <span className="truncate">{selected?.label || placeholder || label}</span>
+        <span className="text-xs text-slate-400">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-2xl bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)] ring-1 ring-slate-200">
+          <p className="px-4 pt-3 pb-1 text-xs font-semibold text-slate-400">{label}</p>
+          <ul role="listbox" aria-label={label} className="max-h-64 overflow-y-auto py-1">
+            {options.map((option) => {
+              const active = option.value === value
+              return (
+                <li key={option.value}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => {
+                      onChange(option.value)
+                      setOpen(false)
+                    }}
+                    className={`flex w-full px-4 py-2.5 text-left text-sm font-medium ${active ? 'bg-[#111827] text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    {option.label}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function DeskInput(props: InputHTMLAttributes<HTMLInputElement>) {

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { DarkButton, DeskCard, DeskInput, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
+import { DarkButton, DeskCard, DeskInput, DeskSelect, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
 import { evenAmounts, marginForPlan, readChitMeta, readShares, steppedAmounts, writeChitMeta, writeShares, type ChitLife } from '../../lib/chitMeta'
 import { asNumber, errorMessage, formatMoney } from '../../lib/format'
 import { listGroups, updateGroup, type GroupCard } from '../../services/groups'
@@ -478,10 +478,13 @@ function AddMember({ directory, onAdd, onCreate }: { directory: MemberListItem[]
   if (!open) return <GhostButton type="button" onClick={() => setOpen(true)}>+ Add member</GhostButton>
   return (
     <DeskCard className="p-3">
-      <select className="h-10 w-full rounded-xl border border-slate-200 px-2 text-sm" defaultValue="" onChange={(event) => { if (event.target.value) onAdd(event.target.value).catch((err: unknown) => setError(errorMessage(err))) }}>
-        <option value="">Choose an existing member</option>
-        {directory.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-      </select>
+      <DeskSelect
+        label="Select member"
+        value=""
+        placeholder="Choose an existing member"
+        options={directory.map((member) => ({ value: member.id, label: member.name }))}
+        onChange={(id) => { onAdd(id).catch((err: unknown) => setError(errorMessage(err))) }}
+      />
       <div className="mt-2 flex gap-2">
         <DeskInput value={name} onChange={(event) => setName(event.target.value)} placeholder="Or a new name" />
         <GreenButton type="button" onClick={() => onCreate(name.trim()).then(() => { setName(''); setOpen(false) }).catch((err: unknown) => setError(errorMessage(err)))}>Add</GreenButton>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { DeskCard } from '../../components/desk-ui'
+import { DeskCard, DeskSelect } from '../../components/desk-ui'
 import { isFutureMonth, monthChip, monthWindow, readChitMeta } from '../../lib/chitMeta'
 import { PAYMENT_METHODS, asNumber, currentMonth, errorMessage, formatMoney, formatMonth, formatShortDate, methodLabel, shiftMonth, todayIso } from '../../lib/format'
 import { getDashboard, listGroups, type GroupCard } from '../../services/groups'
@@ -373,24 +373,17 @@ export function DashboardPage() {
           </DeskCard>
 
           {groups.length > 0 && (
-            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
-              {groups.map((item) => {
-                const active = item.id === group?.id
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => selectGroup(item.id)}
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap ${active ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'}`}
-                  >
-                    {item.name}
-                  </button>
-                )
-              })}
+            <div className="mt-4">
+              <DeskSelect
+                label="Select chit"
+                value={group.id}
+                options={groups.map((item) => ({ value: item.id, label: item.name }))}
+                onChange={selectGroup}
+              />
             </div>
           )}
 
-          <div className="mt-1.5 flex items-center gap-1">
+          <div className="mt-2 flex items-center gap-1">
             <button type="button" aria-label="Earlier months" onClick={() => selectMonth(shiftMonth(month, -1))} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs text-sky-600 hover:bg-sky-50">‹</button>
             <div className="flex flex-1 gap-1 overflow-x-auto">
               {visibleMonths.map((item, index) => {
@@ -439,7 +432,7 @@ export function DashboardPage() {
                 ))}
               </ul>
             )}
-            <button type="button" onClick={openPay} className="mt-3 w-full rounded-full py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+            <button type="button" onClick={openPay} className="mt-3 w-full rounded-full bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700 ring-1 ring-indigo-200">
               Pay a prize
             </button>
           </DeskCard>

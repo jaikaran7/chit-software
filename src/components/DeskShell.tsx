@@ -96,7 +96,7 @@ export function DeskShell() {
                       `flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium leading-none ${isActive ? 'text-[#111827]' : 'text-slate-400'}`
                     }
                   >
-                    <link.icon size={18} />
+                    <link.icon size={24} />
                     {link.label}
                   </NavLink>
                 </li>

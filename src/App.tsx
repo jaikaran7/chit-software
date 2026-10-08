@@ -13,6 +13,7 @@ import { ChitEditorPage } from './pages/desk/ChitEditorPage'
 import { ChitsPage } from './pages/desk/ChitsPage'
 import { DashboardPage } from './pages/desk/DashboardPage'
 import { MemberEditorPage } from './pages/desk/MemberEditorPage'
+import { MemberProfilePage } from './pages/desk/MemberProfilePage'
 import { MembersDeskPage } from './pages/desk/MembersDeskPage'
 import { NewChitPage } from './pages/desk/NewChitPage'
 import { ReportsDeskPage } from './pages/desk/ReportsDeskPage'
@@ -39,7 +40,8 @@ export default function App() {
         <Route path="/groups/:groupId/join" element={<JoinPage />} />
         <Route path="/members" element={<MembersDeskPage />} />
         <Route path="/members/new" element={<MemberEditorPage />} />
-        <Route path="/members/:memberId" element={<MemberEditorPage />} />
+        <Route path="/members/:memberId/edit" element={<MemberEditorPage />} />
+        <Route path="/members/:memberId" element={<MemberProfilePage />} />
         <Route path="/memberships/:membershipId" element={<MembershipPage />} />
         <Route path="/collect" element={<CollectPage />} />
         <Route path="/collect/:membershipId" element={<CollectPage />} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DarkButton, DeskCard, DeskInput, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
 import {
@@ -40,8 +40,7 @@ export function NewChitPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [kind, setKind] = useState<ChitKind>('fixed')
-  const [showDiff, setShowDiff] = useState(false)
+  const [kind] = useState<ChitKind>('fixed')
   const [shareTarget, setShareTarget] = useState(20)
   const [monthCount, setMonthCount] = useState(20)
   const [start, setStart] = useState(firstOfNextMonth())
@@ -85,7 +84,6 @@ export function NewChitPage() {
       const group = groups.find((item) => item.id === from)
       if (!group) return
       const meta = readChitMeta(group.description)
-      if (meta.kind) setKind(meta.kind)
       if (meta.shares) setShareTarget(meta.shares)
       if (meta.months) setMonthCount(meta.months)
       if (meta.start) setStart(meta.start.slice(0, 10))
@@ -361,19 +359,6 @@ export function NewChitPage() {
             <p className="text-sm text-slate-500">{name}. The size and value come next — you’ll set the money after the members.</p>
           </div>
           <DeskCard className="p-5">
-            <h3 className="font-semibold">Which kind of chit is this?</h3>
-            <p className="text-sm text-slate-500">{kind === 'auction' ? 'Members take turns receiving the monthly pot.' : 'You fix every month’s prize up front.'}</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Choice selected={kind === 'auction'} tone="amber" onClick={() => setKind('auction')} title="Auction chit" icon={<HammerIcon />} />
-              <Choice selected={kind === 'fixed'} tone="green" onClick={() => setKind('fixed')} title="Fixed / company chit" icon={<CalendarIcon />} />
-            </div>
-            <button type="button" onClick={() => setShowDiff((value) => !value)} className="mx-auto mt-3 flex items-center gap-1 text-sm text-slate-500">
-              How are they different?
-              <span className={`inline-block transition ${showDiff ? 'rotate-180' : ''}`}>⌄</span>
-            </button>
-            {showDiff && <ChitDifference />}
-          </DeskCard>
-          <DeskCard className="p-5">
             <h3 className="font-semibold">How big is the chit?</h3>
             <p className="text-sm text-slate-500">Shares can be held by fewer people. Months can match shares, or you can change them.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -448,90 +433,90 @@ export function NewChitPage() {
             <h2 className="text-2xl font-semibold">Set up the money</h2>
             <p className="text-slate-500">What each share pays before and after it withdraws, and the prize for every month. The company keeps the commission.</p>
           </div>
-          <DeskCard className="p-5">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Installment every share pays</h3>
-              <div className="flex rounded-full bg-slate-100 p-1 text-sm">
-                <button type="button" onClick={() => setInstallmentMode('same')} className={`rounded-full px-3 py-1 ${installmentMode === 'same' ? 'bg-white font-semibold' : ''}`}>Same</button>
-                <button type="button" onClick={() => setInstallmentMode('varies')} className={`rounded-full px-3 py-1 ${installmentMode === 'varies' ? 'bg-white font-semibold' : ''}`}>Varies</button>
+          <DeskCard className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">What each share pays</h3>
+              <div className="flex rounded-full bg-slate-100 p-0.5 text-xs">
+                <button type="button" onClick={() => setInstallmentMode('same')} className={`rounded-full px-2.5 py-1 ${installmentMode === 'same' ? 'bg-white font-semibold' : ''}`}>Same</button>
+                <button type="button" onClick={() => setInstallmentMode('varies')} className={`rounded-full px-2.5 py-1 ${installmentMode === 'varies' ? 'bg-white font-semibold' : ''}`}>Varies</button>
               </div>
             </div>
-            <DeskInput className="mt-3" value={installment} onChange={(event) => setInstallment(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
-            <p className="mt-2 text-sm text-slate-500">
-              A share pays this until it takes the prize. The withdrawal month itself still pays this.
-            </p>
-            <h3 className="mt-5 font-semibold">Installment every share pays after withdrawal</h3>
-            <DeskInput
-              className="mt-3"
-              value={afterInstallment}
-              onChange={(event) => {
-                setAfterEdited(true)
-                setAfterInstallment(event.target.value.replace(/[^\d]/g, ''))
-              }}
-              inputMode="numeric"
-            />
-            <p className="mt-2 text-sm text-slate-500">
-              One share withdraws each month. From the next month, that share pays this.
-              {postRate !== normalRate ? ` That’s ${formatMoney(postRate - normalRate)} extra.` : ''}
-            </p>
-            <p className="mt-3 text-sm text-slate-600">
-              Month 1 collects {formatMoney(firstMonthTake)}. The last month collects {formatMoney(lastMonthTake)}, because {Math.min(Math.max(monthCount - 1, 0), shareTarget)} shares are already out and paying the higher amount.
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
+                <DeskInput value={installment} onChange={(event) => setInstallment(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
+                <DeskInput
+                  value={afterInstallment}
+                  onChange={(event) => {
+                    setAfterEdited(true)
+                    setAfterInstallment(event.target.value.replace(/[^\d]/g, ''))
+                  }}
+                  inputMode="numeric"
+                />
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              The withdrawal month still pays the first amount. The next month pays the second.
+              {' '}Month 1 collects {formatMoney(firstMonthTake)}. The last month collects {formatMoney(lastMonthTake)}.
             </p>
           </DeskCard>
-          {kind === 'fixed' && (
-            <DeskCard className="p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Prize paid out each month</h3>
-                <span className="text-sm text-emerald-700">{prizes.filter((row) => (parseAmount(row.amount) || 0) > 0).length} of {prizes.length} set</span>
+          <DeskCard className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Prize each month</h3>
+                <button type="button" onClick={applySuggestion} className="text-xs font-semibold text-sky-700">Suggest</button>
               </div>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-1 text-xs text-slate-500">
                 {matchedTurns
-                  ? `${shareTarget} members and ${monthCount} months — everyone withdraws once. The company does not keep a month. It keeps only the commission.`
-                  : `${shareTarget} members and ${monthCount} months. Give the first prize, then how much extra to add each month.`}
+                  ? `${shareTarget} shares, ${monthCount} months. Start and end set the rise.`
+                  : `${shareTarget} shares, ${monthCount} months. Start, then the extra added each month.`}
               </p>
-              <button type="button" onClick={applySuggestion} className="mt-3 text-sm font-semibold text-sky-700">
-                Suggest for me {formatMoney(suggestPrizeEnds(potAmount).first)} → {formatMoney(suggestPrizeEnds(potAmount).last)}
-              </button>
-              <div className={`mt-3 grid gap-2 ${matchedTurns ? 'sm:grid-cols-[1fr_1fr_1fr_auto]' : 'sm:grid-cols-[1fr_1fr_auto]'}`}>
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Starting amount</span>
-                  <DeskInput value={firstPrize} onChange={(event) => onStartPrize(event.target.value)} placeholder="Starting amount" inputMode="numeric" />
+                  <span className="mb-1 block text-[11px] font-medium text-slate-500">Starting amount</span>
+                  <DeskInput value={firstPrize} onChange={(event) => onStartPrize(event.target.value)} placeholder="Start" inputMode="numeric" />
                 </label>
                 {matchedTurns ? (
-                  <>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Ending amount</span>
-                      <DeskInput value={lastPrize} onChange={(event) => onEndPrize(event.target.value)} placeholder="Ending amount" inputMode="numeric" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Rise each month</span>
-                      <DeskInput value={prizeStep} onChange={(event) => onRisePrize(event.target.value)} placeholder="Rise each month" inputMode="numeric" />
-                    </label>
-                  </>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">Ending amount</span>
+                    <DeskInput value={lastPrize} onChange={(event) => onEndPrize(event.target.value)} placeholder="End" inputMode="numeric" />
+                  </label>
                 ) : (
                   <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">Extra each month</span>
-                    <DeskInput value={prizeStep} onChange={(event) => setPrizeStep(event.target.value.replace(/[^\d]/g, ''))} placeholder="Added per month" inputMode="numeric" />
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">Extra each month</span>
+                    <DeskInput value={prizeStep} onChange={(event) => setPrizeStep(event.target.value.replace(/[^\d]/g, ''))} placeholder="Extra" inputMode="numeric" />
                   </label>
                 )}
-                <DarkButton type="button" className="self-end" onClick={fillPrizes}>Fill</DarkButton>
               </div>
+              {matchedTurns && (
+                <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">Rise each month</span>
+                    <DeskInput value={prizeStep} onChange={(event) => onRisePrize(event.target.value)} placeholder="Rise" inputMode="numeric" />
+                  </label>
+                  <DarkButton type="button" onClick={fillPrizes}>Fill</DarkButton>
+                </div>
+              )}
+              {!matchedTurns && (
+                <DarkButton type="button" className="mt-2 w-full" onClick={fillPrizes}>Fill months</DarkButton>
+              )}
               {commission < 0 && <p className="mt-2 text-sm text-rose-600">Prizes are more than the members will pay, so the company commission is negative.</p>}
-              <ul className="mt-4 max-h-[420px] space-y-2 overflow-auto">
+              <ul className="mt-3 max-h-40 space-y-1.5 overflow-auto">
                 {prizes.map((row, index) => (
                   <li key={row.month} className="flex items-center gap-2">
-                    <span className="w-24 shrink-0 text-sm text-slate-500">{monthLabel(row.month)} M{index + 1}</span>
+                    <span className="w-20 shrink-0 text-xs text-slate-500">{monthLabel(row.month)} M{index + 1}</span>
                     <DeskInput value={row.amount} onChange={(event) => setPrizes((current) => current.map((item) => item.month === row.month ? { ...item, amount: event.target.value.replace(/[^\d]/g, '') } : item))} />
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 <Stat label="Collected" value={formatMoney(collectedPlan)} />
                 <Stat label="Prizes out" value={formatMoney(prizePlan)} />
                 <Stat label="Commission" value={formatMoney(commission)} accent />
               </div>
             </DeskCard>
-          )}
           <div className="flex gap-2">
             <GhostButton type="button" onClick={() => setStep(2)}>Back</GhostButton>
             <DarkButton type="button" className="flex-1" disabled={busy} onClick={create}>{busy ? 'Creating…' : 'Create chit group'}</DarkButton>
@@ -539,69 +524,6 @@ export function NewChitPage() {
         </div>
       )}
       </>)}
-    </div>
-  )
-}
-
-function Choice({ selected, title, onClick, tone, icon }: { selected: boolean; title: string; onClick: () => void; tone: 'amber' | 'green'; icon: ReactNode }) {
-  const selectedClass = tone === 'green'
-    ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-    : 'border-amber-200 bg-amber-50 text-amber-900'
-  return (
-    <button type="button" onClick={onClick} className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold ${selected ? selectedClass : 'border-slate-200 bg-white text-slate-600'}`}>
-      {icon}
-      {title}
-    </button>
-  )
-}
-
-function ChitDifference() {
-  const rows = [
-    { month: '1', pay: '₹25,000', prize: 'Company', company: true },
-    { month: '2', pay: '₹18,750', prize: '₹3,50,000' },
-    { month: '3', pay: '₹19,000', prize: '₹3,55,000', highlight: true },
-    { month: '4', pay: '₹19,250', prize: '₹3,60,000' },
-    { month: '20', pay: '₹25,000', prize: '₹4,75,000' },
-  ]
-  return (
-    <div className="mt-4 grid gap-3 lg:grid-cols-2">
-      <div className="rounded-[28px] bg-slate-50 p-5 text-sm">
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-700"><HammerIcon /></div>
-        <h4 className="mt-4 text-lg font-semibold">Auction chit</h4>
-        <p className="mt-1 text-slate-500">Members take turns receiving the monthly pot.</p>
-        <p className="mt-4 text-[11px] font-semibold tracking-[0.14em] text-slate-400">HOW IT WORKS</p>
-        <ul className="mt-2 space-y-2 text-slate-600">
-          <li className="flex gap-2"><span className="text-amber-400">●</span>Everyone pays into a shared pot each month.</li>
-          <li className="flex gap-2"><span className="text-amber-400">●</span>One member receives the whole pot that month.</li>
-          <li className="flex gap-2"><span className="text-amber-400">●</span>A different member each month — everyone gets one turn.</li>
-        </ul>
-        <p className="mt-4 text-slate-500">The classic community chit — the app default.</p>
-      </div>
-      <div className="relative rounded-[28px] border border-emerald-200 bg-emerald-50/60 p-5 text-sm">
-        <span className="absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-xs text-white">✓</span>
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-700"><CalendarIcon /></div>
-        <h4 className="mt-4 text-lg font-semibold">Fixed / company chit</h4>
-        <p className="mt-1 text-slate-600">You fix every month’s prize up front.</p>
-        <p className="mt-3 text-[11px] font-semibold tracking-[0.12em] text-slate-400">EXAMPLE — ₹5,00,000 · 20 MEMBERS · 20 MONTHS</p>
-        <div className="mt-2 overflow-hidden rounded-2xl bg-white">
-          <div className="grid grid-cols-[48px_1fr_1fr] px-3 py-2 text-[11px] font-semibold tracking-wide text-slate-400">
-            <span>MO</span><span>EVERYONE PAYS</span><span>PRIZE</span>
-          </div>
-          {rows.map((row, index) => (
-            <div key={row.month}>
-              {index === 4 && <p className="px-3 py-1 text-center text-slate-300">···</p>}
-              <div className={`grid grid-cols-[48px_1fr_1fr] px-3 py-2 ${row.highlight ? 'bg-emerald-50' : ''}`}>
-                <span className="text-slate-400">{row.month}</span>
-                <span>{row.pay}</span>
-                <span className={row.company ? 'font-semibold text-violet-600' : 'font-semibold text-emerald-700'}>{row.prize}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-slate-600">
-          <span className="text-emerald-600">→</span> You choose who takes <span className="font-semibold text-emerald-700">month 3’s ₹3,55,000</span> prize.
-        </p>
-      </div>
     </div>
   )
 }
@@ -765,36 +687,17 @@ function PhoneIcon() {
   )
 }
 
-function HammerIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="m14 7 3-3 3 3-3 3" />
-      <path d="M14 10 4 20" />
-      <path d="m6 4 4 4" />
-    </svg>
-  )
-}
-
-function CalendarIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="4" y="5" width="16" height="15" rx="2" />
-      <path d="M8 3v4M16 3v4M4 10h16" />
-    </svg>
-  )
-}
-
 function Stepper({ label, hint, value, onChange, presets, sameAs }: { label: string; hint: string; value: number; onChange: (value: number) => void; presets: number[]; sameAs?: number }) {
   return (
-    <div className="rounded-3xl bg-slate-50 p-4">
+    <div className="rounded-3xl bg-slate-50 p-4 text-center">
       <p className="font-semibold">{label}</p>
       <p className="text-xs text-slate-400">{hint}</p>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex items-center justify-center gap-2">
         <GhostButton type="button" onClick={() => onChange(Math.max(1, value - 1))}>−</GhostButton>
         <span className="w-12 text-center text-xl font-semibold">{value}</span>
         <GhostButton type="button" onClick={() => onChange(value + 1)}>+</GhostButton>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1">
+      <div className="mt-2 flex flex-wrap justify-center gap-1">
         {presets.map((preset) => (
           <button key={preset} type="button" onClick={() => onChange(preset)} className="rounded-full bg-white px-2 py-1 text-xs ring-1 ring-slate-200">{preset}</button>
         ))}

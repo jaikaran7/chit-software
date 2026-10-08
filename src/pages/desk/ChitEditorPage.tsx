@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DarkButton, DeskCard, DeskInput, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
-import { marginForPlan, readChitMeta, readShares, writeChitMeta, writeShares, type ChitLife } from '../../lib/chitMeta'
+import { evenAmounts, marginForPlan, readChitMeta, readShares, steppedAmounts, writeChitMeta, writeShares, type ChitLife } from '../../lib/chitMeta'
 import { asNumber, errorMessage, formatMoney } from '../../lib/format'
 import { listGroups, updateGroup, type GroupCard } from '../../services/groups'
 import { createMember, listMembers, type MemberListItem } from '../../services/members'
 import { addMembership, updateMembership } from '../../services/memberships'
 import { updateScheme } from '../../services/schemes'
-import { listSchedules, type ScheduleRow } from '../../services/schedules'
+import { importSchedules, listSchedules, type ScheduleRow } from '../../services/schedules'
 import { supabase } from '../../lib/supabase'
 
 type Seat = {
@@ -33,6 +33,12 @@ export function ChitEditorPage() {
   const [start, setStart] = useState('')
   const [pot, setPot] = useState('')
   const [normal, setNormal] = useState('')
+  const [afterRate, setAfterRate] = useState('')
+  const [plan, setPlan] = useState<{ month: string; amount: string }[]>([])
+  const [firstPrize, setFirstPrize] = useState('')
+  const [lastPrize, setLastPrize] = useState('')
+  const [rise, setRise] = useState('')
+  const [planBusy, setPlanBusy] = useState(false)
   const [seats, setSeats] = useState<Seat[]>([])
   const [directory, setDirectory] = useState<MemberListItem[]>([])
   const [schedules, setSchedules] = useState<ScheduleRow[]>([])
@@ -64,6 +70,16 @@ export function ChitEditorPage() {
       setStart(meta.start?.slice(0, 10) ?? '')
       setPot(meta.pot ? String(meta.pot) : '')
       setNormal(found.normalInstallment ? String(found.normalInstallment) : '')
+      setAfterRate(found.postWithdrawalInstallment ? String(found.postWithdrawalInstallment) : '')
+      const rows = plan.map((row) => ({ month: row.month.slice(0, 10), amount: String(Math.round(asNumber(row.scheduled_payout_amount))) }))
+      setPlan(rows)
+      if (rows.length > 0) {
+        const first = Number(rows[0].amount)
+        const last = Number(rows[rows.length - 1].amount)
+        setFirstPrize(String(first))
+        setLastPrize(String(last))
+        setRise(String(Math.round((last - first) / Math.max(rows.length - 1, 1))))
+      }
     }
     setSeats(((membershipResult.data ?? []) as MembershipQuery[]).map((row) => {
       const member = Array.isArray(row.members) ? row.members[0] : row.members
@@ -133,6 +149,35 @@ export function ChitEditorPage() {
     }
   }
 
+  async function savePlan() {
+    if (!group || plan.length === 0) return
+    setPlanBusy(true)
+    setError(null)
+    try {
+      const rate = Number(normal) || 0
+      const post = Number(afterRate) || rate
+      await importSchedules(
+        groupId,
+        plan.filter((row) => Number(row.amount) > 0).map((row) => ({
+          month: row.month,
+          scheduled_payout_amount: Number(row.amount),
+          noted_normal_installment: rate || null,
+          noted_post_withdrawal_installment: post || null,
+        })),
+        'replace',
+        false,
+      )
+      if (rate > 0 && post > 0 && (rate !== group.normalInstallment || post !== group.postWithdrawalInstallment)) {
+        await updateScheme(groupId, rate, post, 'Monthly plan updated')
+      }
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+
   async function changeShares(seat: Seat, nextShares: number) {
     const shares = Math.max(1, nextShares)
     setSeats((current) => current.map((item) => item.id === seat.id ? { ...item, shares } : item))
@@ -171,7 +216,7 @@ export function ChitEditorPage() {
       <div className="mb-4 flex items-center gap-3">
         <Link to="/chits" className="rounded-full bg-white px-4 py-2 text-sm font-semibold ring-1 ring-slate-200">← Back</Link>
         <div>
-          <h1 className="text-3xl font-semibold">Edit Chit Group</h1>
+          <h1 className="text-xl font-semibold md:text-3xl">Edit Chit Group</h1>
           <p className="text-sm text-slate-500">{pot ? formatMoney(Number(pot)) : 'Chit'} · {activeSeats.length} members · {life}</p>
         </div>
       </div>
@@ -219,13 +264,77 @@ export function ChitEditorPage() {
               <p className="mt-1 text-xs text-slate-400">This is the amount the ledger collects for one share. A person with more shares is shown as shares × this amount.</p>
             </div>
           </DeskCard>
+          <DeskCard className="p-4">
+            <h2 className="text-sm font-semibold">Monthly plan</h2>
+            <p className="mt-1 text-xs text-slate-500">Same prize setup as a new chit. Fill writes every month, then save it onto this running chit.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
+                <DeskInput value={normal} onChange={(event) => setNormal(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
+                <DeskInput value={afterRate} onChange={(event) => setAfterRate(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+              </label>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">Starting amount</span>
+                <DeskInput value={firstPrize} onChange={(event) => {
+                  const value = event.target.value.replace(/[^\d]/g, '')
+                  setFirstPrize(value)
+                  const end = Number(lastPrize) || 0
+                  setRise(String(Math.round((end - (Number(value) || 0)) / Math.max(plan.length - 1, 1))))
+                }} inputMode="numeric" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">Ending amount</span>
+                <DeskInput value={lastPrize} onChange={(event) => {
+                  const value = event.target.value.replace(/[^\d]/g, '')
+                  setLastPrize(value)
+                  const startAmount = Number(firstPrize) || 0
+                  setRise(String(Math.round(((Number(value) || 0) - startAmount) / Math.max(plan.length - 1, 1))))
+                }} inputMode="numeric" />
+              </label>
+            </div>
+            <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-slate-500">Rise each month</span>
+                <DeskInput value={rise} onChange={(event) => {
+                  const value = event.target.value.replace(/[^\d]/g, '')
+                  setRise(value)
+                  const startAmount = Number(firstPrize) || 0
+                  setLastPrize(String(startAmount + (Number(value) || 0) * Math.max(plan.length - 1, 1)))
+                }} inputMode="numeric" />
+              </label>
+              <GhostButton type="button" onClick={() => {
+                const count = plan.length
+                const matched = (shares || count) === (months || count)
+                const amounts = matched
+                  ? evenAmounts(Number(firstPrize) || 0, Number(lastPrize) || 0, count)
+                  : steppedAmounts(Number(firstPrize) || 0, Number(rise) || 0, count)
+                setPlan(plan.map((row, index) => ({ ...row, amount: String(amounts[index] ?? row.amount) })))
+              }}>Fill</GhostButton>
+            </div>
+            <ul className="mt-3 max-h-40 space-y-1.5 overflow-auto">
+              {plan.map((row, index) => (
+                <li key={row.month} className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-xs text-slate-500">M{index + 1}</span>
+                  <DeskInput value={row.amount} onChange={(event) => setPlan((current) => current.map((item) => item.month === row.month ? { ...item, amount: event.target.value.replace(/[^\d]/g, '') } : item))} inputMode="numeric" />
+                </li>
+              ))}
+              {plan.length === 0 && <li className="text-xs text-slate-400">No months on this chit yet.</li>}
+            </ul>
+            <GreenButton type="button" className="mt-3 w-full" disabled={planBusy || plan.length === 0} onClick={savePlan}>
+              {planBusy ? 'Saving plan…' : 'Save monthly plan'}
+            </GreenButton>
+          </DeskCard>
           <DeskCard className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-semibold">Fixed schedule</h2>
-                <p className="text-sm text-slate-500">Prize already set for {schedules.length} months.</p>
+                <h2 className="font-semibold">Prize total</h2>
+                <p className="text-sm text-slate-500">{schedules.length} months on the ledger.</p>
               </div>
-              <Link to="/import" className="rounded-full bg-[#14915a] px-4 py-2 text-sm font-semibold text-white">Edit schedule</Link>
             </div>
             {meta.pot ? (
               <div className="mt-4 grid gap-2 sm:grid-cols-3">

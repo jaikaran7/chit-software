@@ -79,33 +79,35 @@ export function ChitsPage() {
             <DeskCard key={card.group.id} className="overflow-hidden">
               <div className="p-4 md:p-6">
                 <div className="flex items-start justify-between">
-                  <p className="text-sm text-emerald-700">
+                  <p className="text-xs text-emerald-700">
                     <span className="mr-1">●</span>
                     {card.group.status === 'active' ? 'Active' : 'Archived'}
-                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                      {meta.kind === 'auction' ? 'Auction' : 'Fixed'}
-                    </span>
                   </p>
                   <Link to={`/chits/${card.group.id}`} className="text-slate-400" aria-label="Edit chit">✎</Link>
                 </div>
-                <h2 className="mt-3 text-2xl font-semibold">{chitTitle(card.group.name, meta, card.group.memberCount)}</h2>
-                <p className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">
+                <h2 className="mt-2 text-center text-lg font-semibold">{chitTitle(card.group.name, meta, card.group.memberCount)}</h2>
+                <p className="mt-2 text-center text-xl font-semibold tracking-tight">
                   {formatMoney(card.collected)}
-                  <span className="text-lg font-medium text-slate-300"> / {formatMoney(card.expected)}</span>
+                  <span className="text-sm font-medium text-slate-300"> / {formatMoney(card.expected)}</span>
                 </p>
-                <p className="text-sm text-slate-400">collected this month · {card.monthLabel}</p>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <p className="text-center text-xs text-slate-400">collected this month · {card.monthLabel}</p>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${ratio}%` }} />
                 </div>
-                <p className="mt-3 text-sm text-slate-500">
-                  {card.paid} of {card.total} paid
-                  <span className="mx-2 text-slate-300">·</span>
-                  Month {monthNumber(meta.start)}
-                </p>
-                <p className="mt-1 text-sm text-slate-400">
-                  {card.group.memberCount} members
-                  {meta.months ? ` · ${meta.months} months` : ''}
-                </p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-2xl bg-slate-50 py-2">
+                    <p className="text-base font-semibold">{card.group.memberCount}</p>
+                    <p className="text-[11px] text-slate-400">Members</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 py-2">
+                    <p className="text-base font-semibold">{meta.months ?? '—'}</p>
+                    <p className="text-[11px] text-slate-400">Months</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 py-2">
+                    <p className="text-base font-semibold">{card.paid}/{card.total}</p>
+                    <p className="text-[11px] text-slate-400">Paid · month {monthNumber(meta.start)}</p>
+                  </div>
+                </div>
                 {card.group.createdAt && (
                   <p className="mt-1 text-xs text-slate-400">Created {formatShortDate(card.group.createdAt.slice(0, 10))}</p>
                 )}

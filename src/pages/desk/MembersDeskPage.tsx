@@ -57,15 +57,15 @@ export function MembersDeskPage() {
               return (
                 <tr key={member.id} className="border-t border-slate-100">
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
+                    <Link to={`/members/${member.id}`} className="flex items-center gap-3">
                       <Avatar name={member.name} tone={avatarTone(member.name)} />
                       <span className="font-semibold">{member.name}</span>
-                    </div>
+                    </Link>
                   </td>
                   <td className="px-3 py-4 text-slate-500">{member.mobile || '—'}</td>
                   <td className="px-3 py-4 text-slate-500">{profile.email || '—'}</td>
                   <td className="px-4 py-4 text-right">
-                    <Link to={`/members/${member.id}`} className="text-slate-400" aria-label={`Edit ${member.name}`}>✎</Link>
+                    <Link to={`/members/${member.id}/edit`} className="text-slate-400" aria-label={`Edit ${member.name}`}>✎</Link>
                   </td>
                 </tr>
               )

@@ -44,10 +44,11 @@ export function MemberEditorPage() {
       const notes = writeProfile({ email: email.trim(), portal, legacy })
       if (memberId) {
         await updateMember(memberId, name.trim(), phone.trim(), address.trim(), notes, status, 'Member profile updated')
+        navigate(`/members/${memberId}`)
       } else {
-        await createMember(name.trim(), phone.trim(), address.trim(), notes)
+        const id = await createMember(name.trim(), phone.trim(), address.trim(), notes)
+        navigate(`/members/${id}`)
       }
-      navigate('/members')
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -58,7 +59,7 @@ export function MemberEditorPage() {
   return (
     <form onSubmit={onSubmit} className="mx-auto max-w-[720px] space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/members" className="grid h-10 w-10 place-items-center rounded-full bg-white ring-1 ring-slate-200">←</Link>
+        <Link to={memberId ? `/members/${memberId}` : '/members'} className="grid h-10 w-10 place-items-center rounded-full bg-white ring-1 ring-slate-200">←</Link>
         {memberId ? (
           <div className="flex items-center gap-3">
             <Avatar name={name || 'M'} tone={avatarTone(name || 'M')} />

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar, DeskCard, avatarTone } from '../../components/desk-ui'
 import {
-  chitTitle,
   daysUntilMonthEnd,
   isFutureMonth,
   isPastMonth,
@@ -10,7 +9,7 @@ import {
   monthWindow,
   readChitMeta,
 } from '../../lib/chitMeta'
-import { asNumber, currentMonth, errorMessage, formatMoney, formatShortDate, methodLabel, shiftMonth } from '../../lib/format'
+import { asNumber, currentMonth, errorMessage, formatMoney, formatMonth, formatShortDate, methodLabel, shiftMonth } from '../../lib/format'
 import { getDashboard, listGroups, type GroupCard } from '../../services/groups'
 import { isRecorded, listMoves, type MoneyMove } from '../../services/money'
 import { getCollectionSheet, recordCollection, type CollectionRow } from '../../services/payments'
@@ -32,6 +31,11 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [totalIn, setTotalIn] = useState(0)
+  const [totalOut, setTotalOut] = useState(0)
+  const [totalsReady, setTotalsReady] = useState(false)
+  const [tick, setTick] = useState(0)
+  const [groupsLoaded, setGroupsLoaded] = useState(false)
 
   const month = params.get('month') || currentMonth()
   const chitId = params.get('chit') || ''
@@ -54,6 +58,7 @@ export function DashboardPage() {
         setGroups(active.length ? active : rows)
       })
       .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => setGroupsLoaded(true))
   }, [])
 
   useEffect(() => {
@@ -64,6 +69,26 @@ export function DashboardPage() {
       setParams(next, { replace: true })
     }
   }, [group, chitId, params, setParams])
+
+  useEffect(() => {
+    if (groups.length === 0) return
+    let cancelled = false
+    setTotalsReady(false)
+    Promise.all(groups.map((item) => getDashboard(item.id, month).catch(() => null)))
+      .then((rows) => {
+        if (cancelled) return
+        const ready = rows.filter((row) => row != null)
+        setTotalIn(ready.reduce((sum, row) => sum + asNumber(row.collected), 0))
+        setTotalOut(ready.reduce((sum, row) => sum + asNumber(row.actual_payout_total), 0))
+        setTotalsReady(true)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(errorMessage(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [groups, month, tick])
 
   useEffect(() => {
     if (!group) return
@@ -147,6 +172,7 @@ export function DashboardPage() {
       setPending(asNumber(dash.pending))
       setSheet(rows)
       setMoves(activity.filter((move) => move.groupId === group.id && move.kind === 'credit' && isRecorded(move.status)))
+      setTick((value) => value + 1)
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -154,11 +180,47 @@ export function DashboardPage() {
     }
   }
 
-  const title = group ? chitTitle(group.name, meta, group.memberCount) : 'Chits'
+  function selectGroup(id: string) {
+    const copy = new URLSearchParams(params)
+    copy.set('chit', id)
+    copy.set('month', month)
+    setParams(copy)
+  }
 
   return (
     <div className="mx-auto max-w-[760px]">
-      {!group && loaded === false && groups.length === 0 && (
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <DeskCard className="p-4">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">TOTAL IN</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-emerald-700">{totalsReady ? formatMoney(totalIn) : '…'}</p>
+          <p className="mt-1 text-xs text-slate-400">{formatMonth(month)} · all chits</p>
+        </DeskCard>
+        <DeskCard className="p-4">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">TOTAL OUT</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-rose-600">{totalsReady ? formatMoney(totalOut) : '…'}</p>
+          <p className="mt-1 text-xs text-slate-400">{formatMonth(month)} · prizes paid</p>
+        </DeskCard>
+      </div>
+
+      {groups.length > 0 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          {groups.map((item) => {
+            const active = item.id === group?.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectGroup(item.id)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap ${active ? 'bg-[#111827] text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}
+              >
+                {item.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {groupsLoaded && !group && groups.length === 0 && (
         <DeskCard className="p-8 text-center">
           <h1 className="text-2xl font-semibold">No chit yet</h1>
           <p className="mt-2 text-sm text-slate-500">Create a chit, add the members, and the month opens here.</p>
@@ -169,12 +231,6 @@ export function DashboardPage() {
       )}
       {group && (
         <>
-          <div className="mb-4 flex justify-center">
-            <Link to="/chits" className="inline-flex items-center gap-2 rounded-full bg-[#111827] px-4 py-2 text-sm font-semibold text-white">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              {title}
-            </Link>
-          </div>
           {future && (
             <div className="mb-3 flex items-center justify-between rounded-full bg-white px-4 py-2 text-sm shadow-sm ring-1 ring-slate-200">
               <p>

@@ -413,7 +413,7 @@ export function ChitEditorPage() {
             <DeskCard key={seat.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-semibold">#{index + 1} · {seat.name}</p>
+                  <Link to={`/members/${seat.memberId}`} className="font-semibold">#{index + 1} · {seat.name}</Link>
                   <p className="text-sm text-emerald-700">Pays ≈ {formatMoney(seat.shares * rate)} / mo · wins up to {formatMoney(Number(pot) || 0)}</p>
                 </div>
                 <button type="button" onClick={() => leave(seat)} className="rounded-xl bg-rose-50 px-3 py-2 text-rose-500" aria-label="Remove member">⌫</button>

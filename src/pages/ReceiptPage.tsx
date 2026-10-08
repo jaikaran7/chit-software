@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Banner, Button, Field, controlClass } from '../components/ui'
 import { errorMessage, formatMoney, formatMonth } from '../lib/format'
-import { buildSlip, downloadBlob, renderReceiptPng } from '../lib/receiptSlip'
+import { buildSlip, downloadBlob, renderReceiptPng, type ChitPlace } from '../lib/receiptSlip'
+import { findChitLength } from '../services/groups'
 import { getReceipt, type ReceiptView } from '../services/receipts'
 import { voidCollection } from '../services/payments'
 import { voidPayout } from '../services/withdrawals'
@@ -11,28 +12,43 @@ export function ReceiptPage() {
   const { receiptId = '' } = useParams()
   const navigate = useNavigate()
   const [receipt, setReceipt] = useState<ReceiptView | null>(null)
+  const [place, setPlace] = useState<ChitPlace | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    getReceipt(receiptId).then(setReceipt).catch((err: unknown) => setError(errorMessage(err)))
+    let cancelled = false
+    getReceipt(receiptId)
+      .then(async (row) => {
+        const length = await findChitLength(row.group_name).catch(() => ({ start: null, total: null }))
+        if (cancelled) return
+        setPlace(length)
+        setReceipt(row)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(errorMessage(err))
+      })
+    return () => {
+      cancelled = true
+    }
   }, [receiptId])
 
-  if (!receipt) {
+  if (!receipt || !place) {
     return <div>{error ? <Banner>{error}</Banner> : <p className="text-muted">Loading receipt…</p>}</div>
   }
 
-  const slip = buildSlip(receipt)
+  const length = place
+  const slip = buildSlip(receipt, length)
 
   async function download() {
     if (!receipt) return
     setError(null)
     setNotice(null)
     try {
-      const blob = await renderReceiptPng(buildSlip(receipt))
-      downloadBlob(blob, buildSlip(receipt).filename)
+      const blob = await renderReceiptPng(buildSlip(receipt, length))
+      downloadBlob(blob, buildSlip(receipt, length).filename)
     } catch (err) {
       setError(errorMessage(err))
     }
@@ -43,7 +59,7 @@ export function ReceiptPage() {
     setError(null)
     setNotice(null)
     try {
-      const model = buildSlip(receipt)
+      const model = buildSlip(receipt, length)
       const blob = await renderReceiptPng(model)
       const file = new File([blob], model.filename, { type: 'image/png' })
       if (navigator.canShare?.({ files: [file] })) {
@@ -76,20 +92,31 @@ export function ReceiptPage() {
 
   return (
     <div>
-      <article className="mx-auto w-full max-w-[320px] bg-card px-5 py-5 text-left ring-1 ring-ink">
-        <h1 className="text-center font-display text-[1.7rem] leading-none">{slip.groupName}</h1>
-        <p className="mt-2 text-center text-xs font-semibold text-muted">{slip.kicker}</p>
-        <div className="my-4 border-t border-dashed border-ink/40" />
-        <dl className="space-y-3">
-          {slip.lines.map((line) => (
-            <div key={line.label}>
-              <dt className="text-xs text-muted">{line.label}</dt>
-              <dd className={line.emphasis ? 'font-display text-2xl leading-none' : 'text-base font-semibold'}>{line.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="my-4 border-t border-dashed border-ink/40" />
-        <p className={`text-center text-sm font-semibold ${slip.reversed ? 'text-clay' : 'text-grove'}`}>{slip.footer}</p>
+      <article className={`mx-auto w-full max-w-[320px] overflow-hidden bg-card text-left ring-1 ring-ink ${slip.kind === 'prize' ? '' : 'px-5 py-5'}`}>
+        {slip.kind === 'prize' ? (
+          <div className="bg-[#111827] px-5 pb-5 pt-6 text-center text-white">
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-stone-300">PRIZE RECEIPT</p>
+            <h1 className="mt-2 font-display text-[1.7rem] leading-none">{slip.groupName}</h1>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-center font-display text-[1.7rem] leading-none">{slip.groupName}</h1>
+            <p className="mt-2 text-center text-xs font-semibold text-muted">{slip.kicker}</p>
+          </>
+        )}
+        <div className={slip.kind === 'prize' ? 'px-5 pb-5 pt-4' : ''}>
+          {slip.kind === 'collection' && <div className="my-4 border-t border-dashed border-ink/40" />}
+          <dl className="space-y-3">
+            {slip.lines.map((line) => (
+              <div key={line.label}>
+                <dt className="text-xs text-muted">{line.label}</dt>
+                <dd className={line.emphasis ? `font-display leading-none ${slip.kind === 'prize' ? 'text-3xl' : 'text-2xl'}` : 'text-base font-semibold'}>{line.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="my-4 border-t border-dashed border-ink/40" />
+          <p className={`text-center text-sm font-semibold ${slip.reversed ? 'text-clay' : 'text-grove'}`}>{slip.footer}</p>
+        </div>
       </article>
       {(receipt.allocations ?? []).length > 1 && (
         <ul className="mx-auto mt-3 w-full max-w-[320px] space-y-1 text-sm">

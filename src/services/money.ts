@@ -6,6 +6,7 @@ import { shiftMonth } from '../lib/format'
 export type MoneyMove = {
   receiptId: string | null
   kind: 'credit' | 'debit'
+  memberId: string
   memberName: string
   groupId: string
   groupName: string
@@ -51,7 +52,7 @@ type WithdrawalQuery = {
 type MembershipQuery = {
   id: string
   group_id: string
-  members: { name: string } | { name: string }[] | null
+  members: { id: string; name: string } | { id: string; name: string }[] | null
   groups: { name: string } | { name: string }[] | null
 }
 
@@ -72,18 +73,20 @@ export function isRecorded(status: string) {
 }
 
 async function membershipMap(ids: string[]) {
-  const map = new Map<string, { groupId: string; groupName: string; memberName: string }>()
+  const map = new Map<string, { groupId: string; groupName: string; memberId: string; memberName: string }>()
   if (ids.length === 0) return map
   const { data, error } = await supabase
     .from('group_memberships')
-    .select('id, group_id, members(name), groups(name)')
+    .select('id, group_id, members(id, name), groups(name)')
     .in('id', ids)
   if (error) throw error
   for (const row of (data ?? []) as MembershipQuery[]) {
+    const member = Array.isArray(row.members) ? row.members[0] : row.members
     map.set(row.id, {
       groupId: row.group_id,
       groupName: relatedName(row.groups, 'Group'),
-      memberName: relatedName(row.members, 'Member'),
+      memberId: member?.id ?? '',
+      memberName: member?.name || 'Member',
     })
   }
   return map
@@ -168,6 +171,7 @@ async function movesFromRows(paymentRows: PaymentQuery[], withdrawalRows: Withdr
       return {
         receiptId: receipts.byPayment.get(row.id) ?? null,
         kind: 'credit' as const,
+        memberId: person?.memberId ?? '',
         memberName: person?.memberName ?? 'Member',
         groupId: person?.groupId ?? '',
         groupName: person?.groupName ?? 'Group',
@@ -183,6 +187,7 @@ async function movesFromRows(paymentRows: PaymentQuery[], withdrawalRows: Withdr
       return {
         receiptId: receipts.byWithdrawal.get(row.id) ?? null,
         kind: 'debit' as const,
+        memberId: person?.memberId ?? '',
         memberName: person?.memberName ?? 'Member',
         groupId: person?.groupId ?? '',
         groupName: person?.groupName ?? 'Group',
@@ -239,6 +244,7 @@ export async function listMembershipHistory(membershipId: string): Promise<Money
     ...paymentRows.map((row) => ({
       receiptId: receipts.byPayment.get(row.id) ?? null,
       kind: 'credit' as const,
+      memberId: '',
       memberName: '',
       groupId: '',
       groupName: '',
@@ -251,6 +257,7 @@ export async function listMembershipHistory(membershipId: string): Promise<Money
     ...withdrawalRows.map((row) => ({
       receiptId: receipts.byWithdrawal.get(row.id) ?? null,
       kind: 'debit' as const,
+      memberId: '',
       memberName: '',
       groupId: '',
       groupName: '',

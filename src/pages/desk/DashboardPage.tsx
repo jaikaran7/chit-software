@@ -58,10 +58,13 @@ export function DashboardPage() {
   const [collectAmount, setCollectAmount] = useState('')
   const [collectMethod, setCollectMethod] = useState('cash')
   const [collectDate, setCollectDate] = useState(todayIso())
-  const [collectRef, setCollectRef] = useState('')
   const [collectNotes, setCollectNotes] = useState('')
   const [collectBusy, setCollectBusy] = useState(false)
   const [collectError, setCollectError] = useState<string | null>(null)
+  const [advanceAsk, setAdvanceAsk] = useState(false)
+  const [secondPayAsk, setSecondPayAsk] = useState(false)
+  const [payFixed, setPayFixed] = useState<number | null>(null)
+  const [amountAsk, setAmountAsk] = useState<{ fixed: number; paying: number } | null>(null)
 
   const month = params.get('month') || currentMonth()
   const chitId = params.get('chit') || ''
@@ -191,14 +194,24 @@ export function DashboardPage() {
     setCollectAmount(dueNow > 0 ? String(Math.round(dueNow)) : '')
     setCollectMethod('cash')
     setCollectDate(todayIso())
-    setCollectRef('')
     setCollectNotes('')
     setCollectError(null)
+    setAdvanceAsk(false)
   }
 
-  async function submitCollect(event: FormEvent) {
+  function submitCollect(event: FormEvent) {
     event.preventDefault()
     if (!recordRow || !(Number(collectAmount) > 0)) return
+    if (takingAdvance(recordRow, Number(collectAmount))) {
+      setAdvanceAsk(true)
+      return
+    }
+    void saveCollect()
+  }
+
+  async function saveCollect() {
+    if (!recordRow || !(Number(collectAmount) > 0)) return
+    setAdvanceAsk(false)
     setCollectBusy(true)
     setCollectError(null)
     try {
@@ -208,7 +221,7 @@ export function DashboardPage() {
         paymentDate: collectDate,
         amount: Number(collectAmount),
         method: collectMethod,
-        reference: collectRef,
+        reference: '',
         notes: collectNotes,
       })
       setRecordRow(null)
@@ -220,17 +233,30 @@ export function DashboardPage() {
     }
   }
 
-  async function openPay() {
+  function openPay() {
     if (!group) return
+    const alreadyPaid = (selected?.paidOut ?? 0) > 0 || moves.some((move) => move.kind === 'debit')
+    if (alreadyPaid) {
+      setSecondPayAsk(true)
+      return
+    }
+    void loadPaySheet()
+  }
+
+  async function loadPaySheet() {
+    if (!group) return
+    setSecondPayAsk(false)
     setRecordRow(null)
     setPayOpen(true)
+    setPayId('')
+    setPayAmount('')
+    setPayFixed(null)
+    setAmountAsk(null)
     setPayLoading(true)
     setError(null)
     try {
       const rows = await getPayoutSheet(group.id, month)
       setPayoutRows(rows)
-      const open = rows.find((row) => row.withdrawal_status !== 'paid')
-      if (open) choosePay(open, selected?.prize ?? null)
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -241,24 +267,37 @@ export function DashboardPage() {
   function choosePay(row: PayoutRow, prize: number | null) {
     setPayId(row.membership_id)
     const own = row.scheduled_month?.slice(0, 7) === month.slice(0, 7) ? asNumber(row.scheduled_amount) : 0
-    setPayAmount(String(own || prize || ''))
+    const fixed = own || prize || 0
+    setPayFixed(fixed > 0 ? fixed : null)
+    setPayAmount(fixed > 0 ? String(Math.round(fixed)) : '')
+    setAmountAsk(null)
   }
 
-  async function submitPay() {
-    if (!payId || !(Number(payAmount) > 0)) return
+  function submitPay() {
+    const paying = Number(payAmount)
+    if (!payId || !(paying > 0)) return
+    if (payFixed != null && Math.abs(paying - payFixed) > 0.001) {
+      setAmountAsk({ fixed: payFixed, paying })
+      return
+    }
+    void savePay()
+  }
+
+  async function savePay() {
+    const paying = Number(payAmount)
+    if (!payId || !(paying > 0)) return
+    setAmountAsk(null)
     setPayBusy(true)
     setError(null)
     try {
-      const row = payoutRows.find((item) => item.membership_id === payId)
-      const scheduled = row?.scheduled_amount == null ? null : asNumber(row.scheduled_amount)
-      const differs = scheduled != null && Math.abs(Number(payAmount) - scheduled) > 0.001
+      const differs = payFixed != null && Math.abs(paying - payFixed) > 0.001
       const result = await recordPayout({
         membershipId: payId,
         actualMonth: month,
-        actualAmount: Number(payAmount),
+        actualAmount: paying,
         paymentDate: payDate,
         method: payMethod,
-        adjustmentReason: differs ? 'Paid from the dashboard' : '',
+        adjustmentReason: differs ? 'Paid a different amount from the dashboard' : '',
         notes: '',
       })
       setPayOpen(false)
@@ -396,7 +435,7 @@ export function DashboardPage() {
             {showPaid && (
               <ul className="mt-1 divide-y divide-slate-100">
                 {settled.map((row) => (
-                  <DueLine key={row.membership_id} row={row} />
+                  <DueLine key={row.membership_id} row={row} onRecord={() => openRecord(row)} />
                 ))}
               </ul>
             )}
@@ -433,57 +472,52 @@ export function DashboardPage() {
               <form
                 onSubmit={submitCollect}
                 onClick={(event) => event.stopPropagation()}
-                className="w-full max-w-[760px] rounded-t-3xl bg-white px-4 pt-3 shadow-xl"
-                style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+                className="sheet-up max-h-[85vh] w-full max-w-[760px] overflow-y-auto rounded-t-3xl bg-white px-4 pt-3 shadow-xl"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
               >
-                <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-slate-200" />
+                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold">{recordRow.member_name}</h2>
-                    <p className="text-[11px] text-slate-400">
-                      {isFutureMonth(month) ? 'Advance for this month. It shows as already paid on the earlier month.' : 'Goes to the oldest due on this chit.'}
-                    </p>
+                    <h2 className="truncate text-lg font-semibold">{recordRow.member_name}</h2>
+                    {collectHint(recordRow, month) && (
+                      <p className="text-xs text-slate-400">{collectHint(recordRow, month)}</p>
+                    )}
                   </div>
-                  <button type="button" onClick={() => setRecordRow(null)} className="text-xs font-semibold text-slate-400">Close</button>
+                  <button type="button" onClick={() => setRecordRow(null)} className="text-sm font-semibold text-slate-400">Close</button>
                 </div>
-                <div className="mt-2 grid grid-cols-4 gap-1 rounded-2xl bg-slate-50 px-1 py-2 text-center">
-                  <MiniStat label="Due" value={recordRow.due} />
-                  <MiniStat label="Paid" value={recordRow.paid} />
-                  <MiniStat label="Left" value={recordRow.outstanding} />
-                  <MiniStat label="Advance" value={recordRow.advance_credit} />
+                <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-2xl bg-slate-50 py-3">
+                    <p className="text-xs text-slate-400">{paidCaption(recordRow)}</p>
+                    <p className="mt-0.5 text-base font-semibold">{formatMoney(recordRow.paid)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 py-3">
+                    <p className="text-xs text-slate-400">Left</p>
+                    <p className="mt-0.5 text-base font-semibold">{formatMoney(asNumber(recordRow.outstanding) + asNumber(recordRow.joining_outstanding))}</p>
+                  </div>
                 </div>
-                {asNumber(recordRow.joining_outstanding) > 0 && (
-                  <p className="mt-1 text-center text-[11px] text-slate-400">Catch-up {formatMoney(recordRow.joining_outstanding)}</p>
-                )}
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <label className="text-[11px] text-slate-500">
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="text-xs text-slate-500">
                     Date
-                    <input type="date" value={collectDate} onChange={(event) => setCollectDate(event.target.value)} required className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
+                    <input type="date" value={collectDate} onChange={(event) => setCollectDate(event.target.value)} required className={sheetField} />
                   </label>
-                  <label className="text-[11px] text-slate-500">
+                  <label className="text-xs text-slate-500">
                     Amount
-                    <input value={collectAmount} onChange={(event) => setCollectAmount(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" required className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
+                    <input value={collectAmount} onChange={(event) => setCollectAmount(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" required className={sheetField} />
                   </label>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   {PAYMENT_METHODS.map((item) => (
-                    <button key={item.id} type="button" onClick={() => setCollectMethod(item.id)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${collectMethod === item.id ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <button key={item.id} type="button" onClick={() => setCollectMethod(item.id)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${collectMethod === item.id ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
                       {methodShort[item.id]}
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <label className="text-[11px] text-slate-500">
-                    Reference
-                    <input value={collectRef} onChange={(event) => setCollectRef(event.target.value)} className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
-                  </label>
-                  <label className="text-[11px] text-slate-500">
-                    Notes
-                    <input value={collectNotes} onChange={(event) => setCollectNotes(event.target.value)} className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
-                  </label>
-                </div>
-                {collectError && <p className="mt-2 text-xs text-rose-600">{collectError}</p>}
-                <button type="submit" disabled={collectBusy || !(Number(collectAmount) > 0)} className="mt-2 w-full rounded-full bg-[#14915a] py-2 text-sm font-semibold text-white disabled:bg-slate-300">
+                <label className="mt-3 block text-xs text-slate-500">
+                  Notes
+                  <input value={collectNotes} onChange={(event) => setCollectNotes(event.target.value)} className={sheetField} />
+                </label>
+                {collectError && <p className="mt-2 text-sm text-rose-600">{collectError}</p>}
+                <button type="submit" disabled={collectBusy || !(Number(collectAmount) > 0)} className="mt-3 w-full rounded-full bg-[#14915a] py-3 text-base font-semibold text-white disabled:bg-slate-300">
                   {collectBusy ? 'Saving…' : 'Collect'}
                 </button>
               </form>
@@ -494,60 +528,97 @@ export function DashboardPage() {
             <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40" onClick={() => setPayOpen(false)}>
               <div
                 onClick={(event) => event.stopPropagation()}
-                className="w-full max-w-[760px] rounded-t-3xl bg-white px-4 pt-3 shadow-xl"
-                style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+                className="sheet-up flex h-[70vh] w-full max-w-[760px] flex-col overflow-hidden rounded-t-3xl bg-white px-4 pt-3 shadow-xl"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
               >
-                <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-slate-200" />
-                <div className="flex items-start justify-between gap-3">
+                <div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-slate-200" />
+                <div className="flex shrink-0 items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">Pay a prize</h2>
-                    <p className="text-[11px] text-slate-400">Only members of {group.name}.</p>
+                    <h2 className="text-lg font-semibold">Pay a prize</h2>
+                    <p className="text-xs text-slate-400">Only members of {group.name}.</p>
                   </div>
-                  <button type="button" onClick={() => setPayOpen(false)} className="text-xs font-semibold text-slate-400">Close</button>
+                  <button type="button" onClick={() => setPayOpen(false)} className="text-sm font-semibold text-slate-400">Close</button>
                 </div>
                 {payLoading ? (
-                  <p className="py-4 text-sm text-slate-400">Loading members…</p>
+                  <p className="py-6 text-sm text-slate-400">Loading members…</p>
                 ) : payable.length === 0 ? (
-                  <p className="py-4 text-sm text-slate-400">Everyone who can take a prize has already been paid.</p>
+                  <p className="py-6 text-sm text-slate-400">Everyone who can take a prize has already been paid.</p>
                 ) : (
                   <>
-                    <div className="mt-2 flex gap-1 overflow-x-auto pb-1">
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-2">
                       {payable.map((row) => (
                         <button
                           key={row.membership_id}
                           type="button"
                           onClick={() => choosePay(row, selected?.prize ?? null)}
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${payId === row.membership_id ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800'}`}
+                          className={`block w-full rounded-2xl px-4 py-3 text-left text-base font-semibold ${payId === row.membership_id ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800'}`}
                         >
                           {row.member_name}
                         </button>
                       ))}
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <label className="text-[11px] text-slate-500">
-                        Amount
-                        <input value={payAmount} onChange={(event) => setPayAmount(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
-                      </label>
-                      <label className="text-[11px] text-slate-500">
-                        Date
-                        <input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} className="mt-0.5 h-9 w-full rounded-xl border border-slate-200 px-2 text-sm" />
-                      </label>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {PAYMENT_METHODS.map((item) => (
-                        <button key={item.id} type="button" onClick={() => setPayMethod(item.id)} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${payMethod === item.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                          {methodShort[item.id]}
+                    {payId && (
+                      <div className="shrink-0 border-t border-slate-100 pt-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-xs text-slate-500">
+                            Amount
+                            <input value={payAmount} onChange={(event) => setPayAmount(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" className={sheetField} />
+                          </label>
+                          <label className="text-xs text-slate-500">
+                            Date
+                            <input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} className={sheetField} />
+                          </label>
+                        </div>
+                        {payFixed != null && (
+                          <p className="mt-2 text-xs text-slate-400">Fixed amount {formatMoney(payFixed)}</p>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {PAYMENT_METHODS.map((item) => (
+                            <button key={item.id} type="button" onClick={() => setPayMethod(item.id)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${payMethod === item.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {methodShort[item.id]}
+                            </button>
+                          ))}
+                        </div>
+                        {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+                        <button type="button" disabled={payBusy || !(Number(payAmount) > 0)} onClick={submitPay} className="mt-3 w-full rounded-full bg-slate-900 py-3 text-base font-semibold text-white disabled:bg-slate-300">
+                          {payBusy ? 'Paying…' : 'Pay'}
                         </button>
-                      ))}
-                    </div>
-                    {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-                    <button type="button" disabled={payBusy || !(Number(payAmount) > 0)} onClick={submitPay} className="mt-2 w-full rounded-full bg-slate-900 py-2 text-sm font-semibold text-white disabled:bg-slate-300">
-                      {payBusy ? 'Paying…' : 'Pay'}
-                    </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </div>
+          )}
+
+          {advanceAsk && (
+            <Ask
+              title="Are you taking the advance?"
+              body="This month is already paid, or this amount is more than what is left. The extra is an advance."
+              yes="Yes"
+              no="No"
+              onYes={() => void saveCollect()}
+              onNo={() => setAdvanceAsk(false)}
+            />
+          )}
+          {secondPayAsk && (
+            <Ask
+              title="Already paid in this month"
+              body="You are paying the second payment."
+              yes="OK"
+              onYes={() => void loadPaySheet()}
+              onNo={() => setSecondPayAsk(false)}
+            />
+          )}
+          {amountAsk && (
+            <Ask
+              title="The amount has been changed"
+              body={`Fixed amount was ${formatMoney(amountAsk.fixed)}. You are paying ${formatMoney(amountAsk.paying)}. ${prizeGap(amountAsk.fixed, amountAsk.paying).word} ${formatMoney(prizeGap(amountAsk.fixed, amountAsk.paying).amount)}.`}
+              yes="OK"
+              no="Back"
+              onYes={() => void savePay()}
+              onNo={() => setAmountAsk(null)}
+            />
           )}
         </>
       )}
@@ -580,11 +651,44 @@ function DueLine({ row, onRecord }: { row: CollectionRow; onRecord?: () => void 
   )
 }
 
-function MiniStat({ label, value }: { label: string; value: number | string }) {
+const sheetField = 'mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-base'
+
+function paidCaption(row: CollectionRow) {
+  if (asNumber(row.advance_credit) > 0 || row.status === 'ADVANCE') return 'Paid in advance'
+  return 'Paid'
+}
+
+function collectHint(row: CollectionRow, month: string) {
+  if (month.slice(0, 7) < currentMonth().slice(0, 7)) return 'Paid last month'
+  if (isFutureMonth(month) && asNumber(row.advance_credit) <= 0 && row.status !== 'ADVANCE') return 'Paid in advance'
+  return null
+}
+
+function takingAdvance(row: CollectionRow, amount: number) {
+  const left = asNumber(row.outstanding) + asNumber(row.joining_outstanding)
+  if (row.status === 'PAID' || row.status === 'ADVANCE' || left <= 0) return true
+  return amount > left + 0.001
+}
+
+function prizeGap(fixed: number, paying: number) {
+  const gap = Math.round(fixed - paying)
+  if (gap > 0) return { word: 'Profit', amount: gap }
+  return { word: 'Loss', amount: Math.abs(gap) }
+}
+
+function Ask({ title, body, yes, no, onYes, onNo }: { title: string; body: string; yes: string; no?: string; onYes: () => void; onNo: () => void }) {
   return (
-    <div>
-      <p className="text-[10px] text-slate-400">{label}</p>
-      <p className="text-[11px] font-semibold text-slate-800">{formatMoney(value)}</p>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/50 p-4 sm:items-center" onClick={onNo}>
+      <div onClick={(event) => event.stopPropagation()} className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-xl">
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{body}</p>
+        <div className="mt-4 flex gap-2">
+          {no && (
+            <button type="button" onClick={onNo} className="flex-1 rounded-full py-3 text-sm font-semibold ring-1 ring-slate-200">{no}</button>
+          )}
+          <button type="button" onClick={onYes} className="flex-1 rounded-full bg-[#111827] py-3 text-sm font-semibold text-white">{yes}</button>
+        </div>
+      </div>
     </div>
   )
 }

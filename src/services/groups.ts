@@ -1,6 +1,8 @@
+import { readChitMeta } from '../lib/chitMeta'
 import { asNumber } from '../lib/format'
 import { rpc } from '../lib/rpc'
 import { supabase } from '../lib/supabase'
+import { listSchedules } from './schedules'
 
 export type GroupCard = {
   id: string
@@ -56,6 +58,21 @@ export function createGroup(name: string, description: string, normal: number, p
     p_normal: normal,
     p_post: post,
   })
+}
+
+export async function findChitLength(groupName: string): Promise<{ start: string | null; total: number | null }> {
+  const group = (await listGroups()).find((item) => item.name === groupName)
+  if (!group) return { start: null, total: null }
+  const meta = readChitMeta(group.description)
+  let start = meta.start
+  let total = meta.months
+  if (start && total) return { start, total }
+  const schedules = await listSchedules(group.id).catch(() => [])
+  const months = [...new Set(schedules.map((row) => row.month.slice(0, 7)))].sort()
+  if (!start && months[0]) start = `${months[0]}-01`
+  if (!total && months.length > 0) total = months.length
+  if (!total) total = meta.shares ?? (group.memberCount > 0 ? group.memberCount : null)
+  return { start, total }
 }
 
 export function updateGroup(groupId: string, name: string, description: string, status: string) {

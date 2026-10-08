@@ -184,8 +184,12 @@ export function ReportsDeskPage() {
             <h2 className="font-semibold">Top contributors</h2>
             <ol className="mt-3 space-y-3">
               {contributors.map((row, index) => (
-                <li key={row.name} className="flex items-center justify-between">
-                  <span><span className="mr-3 text-slate-400">{index + 1}</span>{row.name}<span className="ml-2 text-xs text-slate-400">{row.count} payment{row.count === 1 ? '' : 's'}</span></span>
+                <li key={row.memberId || row.name} className="flex items-center justify-between">
+                  <span>
+                    <span className="mr-3 text-slate-400">{index + 1}</span>
+                    {row.memberId ? <Link to={`/members/${row.memberId}`} className="font-semibold">{row.name}</Link> : row.name}
+                    <span className="ml-2 text-xs text-slate-400">{row.count} payment{row.count === 1 ? '' : 's'}</span>
+                  </span>
                   <span className="font-semibold text-emerald-700">{formatMoney(row.amount)}</span>
                 </li>
               ))}
@@ -234,7 +238,14 @@ export function ReportsDeskPage() {
           <ul className="mt-3 divide-y divide-slate-100">
             {scoped.filter((move) => move.kind === 'debit').map((move) => (
               <li key={`${move.happenedOn}-${move.memberName}-${move.amount}`} className="flex justify-between py-3">
-                <span>{move.memberName}<span className="ml-2 text-sm text-slate-400">{move.happenedOn}</span></span>
+                <span>
+                  {move.receiptId ? (
+                    <Link to={`/receipts/${move.receiptId}`} className="font-semibold">{move.memberName}</Link>
+                  ) : (
+                    <Link to={`/members/${move.memberId}`} className="font-semibold">{move.memberName}</Link>
+                  )}
+                  <span className="ml-2 text-sm text-slate-400">{move.happenedOn}</span>
+                </span>
                 <span className="font-semibold">{formatMoney(move.amount)}</span>
               </li>
             ))}
@@ -247,8 +258,8 @@ export function ReportsDeskPage() {
           <h2 className="font-semibold">By member</h2>
           <ul className="mt-3 divide-y divide-slate-100">
             {byMember.map((row) => (
-              <li key={row.name} className="flex justify-between py-3">
-                <span className="font-medium">{row.name}</span>
+              <li key={row.memberId || row.name} className="flex justify-between py-3">
+                {row.memberId ? <Link to={`/members/${row.memberId}`} className="font-medium">{row.name}</Link> : <span className="font-medium">{row.name}</span>}
                 <span className="text-sm text-slate-500">in {formatMoney(row.credit)} · out {formatMoney(row.debit)}</span>
               </li>
             ))}
@@ -365,26 +376,25 @@ function groupMethods(moves: MoneyMove[]) {
 }
 
 function topPeople(moves: MoneyMove[]) {
-  const map = new Map<string, { amount: number; count: number }>()
+  const map = new Map<string, { name: string; memberId: string; amount: number; count: number }>()
   for (const move of moves) {
-    const current = map.get(move.memberName) ?? { amount: 0, count: 0 }
+    const key = move.memberId || move.memberName
+    const current = map.get(key) ?? { name: move.memberName, memberId: move.memberId, amount: 0, count: 0 }
     current.amount += move.amount
     current.count += 1
-    map.set(move.memberName, current)
+    map.set(key, current)
   }
-  return [...map.entries()]
-    .map(([name, value]) => ({ name, ...value }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 8)
+  return [...map.values()].sort((a, b) => b.amount - a.amount).slice(0, 8)
 }
 
 function memberTotals(moves: MoneyMove[]) {
-  const map = new Map<string, { credit: number; debit: number }>()
+  const map = new Map<string, { name: string; memberId: string; credit: number; debit: number }>()
   for (const move of moves) {
-    const current = map.get(move.memberName) ?? { credit: 0, debit: 0 }
+    const key = move.memberId || move.memberName
+    const current = map.get(key) ?? { name: move.memberName, memberId: move.memberId, credit: 0, debit: 0 }
     if (move.kind === 'credit') current.credit += move.amount
     else current.debit += move.amount
-    map.set(move.memberName, current)
+    map.set(key, current)
   }
-  return [...map.entries()].map(([name, value]) => ({ name, ...value }))
+  return [...map.values()]
 }

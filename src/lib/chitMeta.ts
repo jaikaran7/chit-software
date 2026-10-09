@@ -2,11 +2,14 @@ import { monthSequence } from './payoutPlan'
 import { currentMonth, shiftMonth } from './format'
 
 export type ChitKind = 'fixed' | 'auction'
+export type ChitPay = 'fixed' | 'commission'
 export type ChitLife = 'draft' | 'active' | 'completed'
 
 export type ChitMeta = {
   v: 1
   kind: ChitKind
+  pay: ChitPay
+  installmentRise: number | null
   pot: number | null
   shares: number | null
   months: number | null
@@ -30,6 +33,8 @@ export type ShareNote = {
 const emptyMeta = (): ChitMeta => ({
   v: 1,
   kind: 'fixed',
+  pay: 'fixed',
+  installmentRise: null,
   pot: null,
   shares: null,
   months: null,
@@ -47,6 +52,8 @@ export function readChitMeta(description: string | null | undefined): ChitMeta {
       return {
         v: 1,
         kind: parsed.kind === 'auction' ? 'auction' : 'fixed',
+        pay: parsed.pay === 'commission' ? 'commission' : 'fixed',
+        installmentRise: numberOrNull(parsed.installmentRise),
         pot: numberOrNull(parsed.pot),
         shares: numberOrNull(parsed.shares),
         months: numberOrNull(parsed.months),
@@ -186,6 +193,25 @@ export function shareMonthCollection(monthIndex: number, shares: number, normal:
   const paying = Math.max(shares, 0)
   const alreadyOut = Math.min(Math.max(monthIndex, 0), paying)
   return (paying - alreadyOut) * normal + alreadyOut * post
+}
+
+/** One share's installment in a commission chit. Month 0 is `first`; each later month adds `rise`. Withdrawal does not change it. */
+export function commissionShareDue(monthIndex: number, first: number, rise: number): number {
+  const base = Number.isFinite(first) ? first : 0
+  const extra = Number.isFinite(rise) ? rise : 0
+  return Math.round(base + extra * Math.max(monthIndex, 0))
+}
+
+export function commissionMonthCollection(monthIndex: number, shares: number, first: number, rise: number): number {
+  return Math.max(shares, 0) * commissionShareDue(monthIndex, first, rise)
+}
+
+export function commissionLifetimeCollections(months: number, shares: number, first: number, rise: number): number {
+  let total = 0
+  for (let index = 0; index < Math.max(months, 0); index += 1) {
+    total += commissionMonthCollection(index, shares, first, rise)
+  }
+  return total
 }
 
 export function lifetimeCollections(months: number, shares: number, normal: number, post: number): number {

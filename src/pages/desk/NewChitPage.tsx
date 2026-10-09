@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DarkButton, DeskCard, DeskInput, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
 import {
+  commissionLifetimeCollections,
+  commissionMonthCollection,
+  commissionShareDue,
   evenAmounts,
   lifetimeCollections,
   readChitMeta,
@@ -14,6 +17,7 @@ import {
   writeShares,
   type ChitKind,
   type ChitLife,
+  type ChitPay,
 } from '../../lib/chitMeta'
 import { currentMonth, errorMessage, formatMoney, parseAmount, shiftMonth } from '../../lib/format'
 import { monthSequence } from '../../lib/payoutPlan'
@@ -41,6 +45,7 @@ export function NewChitPage() {
   const [params] = useSearchParams()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [kind] = useState<ChitKind>('fixed')
+  const [pay, setPay] = useState<ChitPay>('fixed')
   const [shareTarget, setShareTarget] = useState(20)
   const [monthCount, setMonthCount] = useState(20)
   const [start, setStart] = useState(firstOfNextMonth())
@@ -52,8 +57,8 @@ export function NewChitPage() {
   const [seats, setSeats] = useState<Seat[]>([])
   const [query, setQuery] = useState('')
   const [drafts, setDrafts] = useState<DraftPerson[]>([])
-  const [installmentMode, setInstallmentMode] = useState<'same' | 'varies'>('same')
   const [installment, setInstallment] = useState('25000')
+  const [installmentRise, setInstallmentRise] = useState('')
   const [afterInstallment, setAfterInstallment] = useState('25000')
   const [afterEdited, setAfterEdited] = useState(false)
   const [prizes, setPrizes] = useState<PrizeRow[]>([])
@@ -71,11 +76,11 @@ export function NewChitPage() {
   }, [])
 
   useEffect(() => {
-    if (installmentMode !== 'same') return
+    if (pay === 'commission') return
     const next = String(perShare || '')
     setInstallment(next)
     if (!afterEdited) setAfterInstallment(next)
-  }, [perShare, installmentMode, afterEdited])
+  }, [perShare, afterEdited, pay])
 
   useEffect(() => {
     const from = params.get('from')
@@ -88,6 +93,11 @@ export function NewChitPage() {
       if (meta.months) setMonthCount(meta.months)
       if (meta.start) setStart(meta.start.slice(0, 10))
       if (meta.pot) setPot(String(meta.pot))
+      setPay(meta.pay)
+      if (meta.pay === 'commission') {
+        setInstallmentRise(meta.installmentRise ? String(meta.installmentRise) : '')
+        if (group.normalInstallment) setInstallment(String(group.normalInstallment))
+      }
       setName(`${group.name} copy`)
       setNamed(true)
     }).catch(() => undefined)
@@ -170,13 +180,20 @@ export function NewChitPage() {
 
   const normalRate = parseAmount(installment)
   const postRate = parseAmount(afterInstallment) || normalRate
+  const riseAmount = parseAmount(installmentRise) || 0
   const matchedTurns = shareTarget === monthCount
   const collectedPlan = useMemo(
-    () => lifetimeCollections(monthCount, shareTarget, normalRate, postRate),
-    [monthCount, shareTarget, normalRate, postRate],
+    () => pay === 'commission'
+      ? commissionLifetimeCollections(monthCount, shareTarget, normalRate, riseAmount)
+      : lifetimeCollections(monthCount, shareTarget, normalRate, postRate),
+    [pay, monthCount, shareTarget, normalRate, postRate, riseAmount],
   )
-  const firstMonthTake = shareMonthCollection(0, shareTarget, normalRate, postRate)
-  const lastMonthTake = shareMonthCollection(Math.max(monthCount - 1, 0), shareTarget, normalRate, postRate)
+  const firstMonthTake = pay === 'commission'
+    ? commissionMonthCollection(0, shareTarget, normalRate, riseAmount)
+    : shareMonthCollection(0, shareTarget, normalRate, postRate)
+  const lastMonthTake = pay === 'commission'
+    ? commissionMonthCollection(Math.max(monthCount - 1, 0), shareTarget, normalRate, riseAmount)
+    : shareMonthCollection(Math.max(monthCount - 1, 0), shareTarget, normalRate, postRate)
 
   const prizePlan = prizes.reduce((total, row) => total + (row.company ? 0 : parseAmount(row.amount) || 0), 0)
   const commission = collectedPlan - prizePlan
@@ -185,15 +202,17 @@ export function NewChitPage() {
     if (!(potAmount > 0)) return setError('Enter the prize pot')
     if (commission < 0) return setError('Prizes are more than the members will pay. The company commission would be negative.')
     const rate = normalRate
-    const post = postRate
-    if (!(rate > 0)) return setError('Enter the monthly installment')
-    if (!(post > 0)) return setError('Enter the installment a share pays after withdrawal')
+    const post = pay === 'commission' ? rate : postRate
+    if (!(rate > 0)) return setError(pay === 'commission' ? 'Enter the first month amount' : 'Enter the monthly installment')
+    if (pay === 'fixed' && !(post > 0)) return setError('Enter the installment a share pays after withdrawal')
     setBusy(true)
     setError(null)
     try {
       const meta = writeChitMeta({
         v: 1,
         kind,
+        pay,
+        installmentRise: pay === 'commission' ? riseAmount : null,
         pot: potAmount,
         shares: shareTarget,
         months: monthCount,
@@ -205,12 +224,16 @@ export function NewChitPage() {
       const groupId = await createGroup(name.trim() || 'Chit', meta, rate, post)
       const scheduleRows = prizes
         .filter((row) => !row.company && (parseAmount(row.amount) || 0) > 0)
-        .map((row) => ({
-          month: row.month,
-          scheduled_payout_amount: parseAmount(row.amount),
-          noted_normal_installment: installmentMode === 'same' ? rate : null,
-          noted_post_withdrawal_installment: installmentMode === 'same' ? post : null,
-        }))
+        .map((row) => {
+          const monthIndex = prizes.findIndex((item) => item.month === row.month)
+          const due = commissionShareDue(monthIndex, rate, riseAmount)
+          return {
+            month: row.month,
+            scheduled_payout_amount: parseAmount(row.amount),
+            noted_normal_installment: pay === 'commission' ? due : rate,
+            noted_post_withdrawal_installment: pay === 'commission' ? due : post,
+          }
+        })
       if (scheduleRows.length > 0) {
         await importSchedules(groupId, scheduleRows, 'commit', false)
       }
@@ -431,37 +454,66 @@ export function NewChitPage() {
         <div className="space-y-4">
           <div>
             <h2 className="text-2xl font-semibold">Set up the money</h2>
-            <p className="text-slate-500">What each share pays before and after it withdraws, and the prize for every month. The company keeps the commission.</p>
+            <p className="text-slate-500">
+              {pay === 'commission'
+                ? 'What each share pays as the amount rises each month, and the prize for every month. The company keeps the commission.'
+                : 'What each share pays before and after it withdraws, and the prize for every month. The company keeps the commission.'}
+            </p>
           </div>
           <DeskCard className="p-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">What each share pays</h3>
               <div className="flex rounded-full bg-slate-100 p-0.5 text-xs">
-                <button type="button" onClick={() => setInstallmentMode('same')} className={`rounded-full px-2.5 py-1 ${installmentMode === 'same' ? 'bg-white font-semibold' : ''}`}>Same</button>
-                <button type="button" onClick={() => setInstallmentMode('varies')} className={`rounded-full px-2.5 py-1 ${installmentMode === 'varies' ? 'bg-white font-semibold' : ''}`}>Varies</button>
+                <button type="button" onClick={() => setPay('fixed')} className={`rounded-full px-2.5 py-1 ${pay === 'fixed' ? 'bg-white font-semibold' : ''}`}>Fixed</button>
+                <button type="button" onClick={() => {
+                  setPay('commission')
+                  if (!installment) setInstallment(String(perShare || ''))
+                }} className={`rounded-full px-2.5 py-1 ${pay === 'commission' ? 'bg-white font-semibold' : ''}`}>Commission</button>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
-                <DeskInput value={installment} onChange={(event) => setInstallment(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
-                <DeskInput
-                  value={afterInstallment}
-                  onChange={(event) => {
-                    setAfterEdited(true)
-                    setAfterInstallment(event.target.value.replace(/[^\d]/g, ''))
-                  }}
-                  inputMode="numeric"
-                />
-              </label>
-            </div>
-            <p className="mt-2 text-xs text-slate-500">
-              The withdrawal month still pays the first amount. The next month pays the second.
-              {' '}Month 1 collects {formatMoney(firstMonthTake)}. The last month collects {formatMoney(lastMonthTake)}.
-            </p>
+            {pay === 'fixed' ? (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
+                    <DeskInput value={installment} onChange={(event) => setInstallment(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
+                    <DeskInput
+                      value={afterInstallment}
+                      onChange={(event) => {
+                        setAfterEdited(true)
+                        setAfterInstallment(event.target.value.replace(/[^\d]/g, ''))
+                      }}
+                      inputMode="numeric"
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  The withdrawal month still pays the first amount. The next month pays the second.
+                  {' '}Month 1 collects {formatMoney(firstMonthTake)}. The last month collects {formatMoney(lastMonthTake)}.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">First month amount</span>
+                    <DeskInput value={installment} onChange={(event) => setInstallment(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-slate-500">Rise each month</span>
+                    <DeskInput value={installmentRise} onChange={(event) => setInstallmentRise(event.target.value.replace(/[^\d]/g, ''))} placeholder="5500" inputMode="numeric" />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Every share pays the same amount that month, whether that member has withdrawn or not.
+                  {' '}Month 1 is {formatMoney(commissionShareDue(0, normalRate, riseAmount))}. Each later month adds {formatMoney(riseAmount)}.
+                  {' '}Month 1 collects {formatMoney(firstMonthTake)}. The last month collects {formatMoney(lastMonthTake)}.
+                </p>
+              </>
+            )}
           </DeskCard>
           <DeskCard className="p-4">
               <div className="flex items-center justify-between gap-2">

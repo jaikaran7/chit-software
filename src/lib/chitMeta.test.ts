@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evenAmounts, lifetimeCollections, marginForPlan, readChitMeta, readShares, shareMonthCollection, steppedAmounts, suggestPrizeEnds, writeChitMeta } from './chitMeta'
+import { commissionLifetimeCollections, commissionShareDue, evenAmounts, lifetimeCollections, marginForPlan, readChitMeta, readShares, shareMonthCollection, steppedAmounts, suggestPrizeEnds, writeChitMeta } from './chitMeta'
 
 describe('chit meta', () => {
   it('keeps a plain description as a note', () => {
@@ -11,6 +11,8 @@ describe('chit meta', () => {
     const raw = writeChitMeta({
       v: 1,
       kind: 'fixed',
+      pay: 'fixed',
+      installmentRise: null,
       pot: 500000,
       shares: 20,
       months: 20,
@@ -55,6 +57,49 @@ describe('chit meta', () => {
 
   it('raises a prize by a fixed extra when the chit is not one withdrawal per member', () => {
     expect(steppedAmounts(475000, 5000, 3)).toEqual([475000, 480000, 485000])
+  })
+
+  it('raises every share by the same amount each month, withdrawal or not', () => {
+    expect(commissionShareDue(0, 25000, 5500)).toBe(25000)
+    expect(commissionShareDue(1, 25000, 5500)).toBe(30500)
+    expect(commissionShareDue(2, 25000, 5500)).toBe(36000)
+    expect(commissionLifetimeCollections(3, 20, 25000, 5500)).toBe(20 * (25000 + 30500 + 36000))
+    expect(commissionShareDue(0, 25000, Number.NaN)).toBe(25000)
+    expect(commissionShareDue(2, 25000, Number.NaN)).toBe(25000)
+  })
+
+  it('keeps older plans on the fixed pay style', () => {
+    const raw = JSON.stringify({
+      v: 1,
+      kind: 'fixed',
+      pot: 500000,
+      shares: 20,
+      months: 20,
+      start: '2026-11-01',
+      life: 'active',
+      note: '',
+      companyMonths: [],
+    })
+    expect(readChitMeta(raw).pay).toBe('fixed')
+    expect(readChitMeta(raw).installmentRise).toBeNull()
+  })
+
+  it('remembers a commission plan and its monthly rise', () => {
+    const raw = writeChitMeta({
+      v: 1,
+      kind: 'fixed',
+      pay: 'commission',
+      installmentRise: 5500,
+      pot: 500000,
+      shares: 20,
+      months: 20,
+      start: '2026-11-01',
+      life: 'active',
+      note: '',
+      companyMonths: [],
+    })
+    expect(readChitMeta(raw).pay).toBe('commission')
+    expect(readChitMeta(raw).installmentRise).toBe(5500)
   })
 
   it('reads share counts', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { DarkButton, DeskCard, DeskInput, DeskSelect, FieldLabel, GhostButton, GreenButton } from '../../components/desk-ui'
-import { evenAmounts, marginForPlan, readChitMeta, readShares, steppedAmounts, writeChitMeta, writeShares, type ChitLife } from '../../lib/chitMeta'
+import { commissionLifetimeCollections, commissionShareDue, evenAmounts, marginForPlan, readChitMeta, readShares, steppedAmounts, writeChitMeta, writeShares, type ChitLife, type ChitPay } from '../../lib/chitMeta'
 import { asNumber, errorMessage, formatMoney } from '../../lib/format'
 import { listGroups, updateGroup, type GroupCard } from '../../services/groups'
 import { createMember, listMembers, type MemberListItem } from '../../services/members'
@@ -34,6 +34,8 @@ export function ChitEditorPage() {
   const [pot, setPot] = useState('')
   const [normal, setNormal] = useState('')
   const [afterRate, setAfterRate] = useState('')
+  const [pay, setPay] = useState<ChitPay>('fixed')
+  const [installmentRise, setInstallmentRise] = useState('')
   const [plan, setPlan] = useState<{ month: string; amount: string }[]>([])
   const [firstPrize, setFirstPrize] = useState('')
   const [lastPrize, setLastPrize] = useState('')
@@ -71,6 +73,8 @@ export function ChitEditorPage() {
       setPot(meta.pot ? String(meta.pot) : '')
       setNormal(found.normalInstallment ? String(found.normalInstallment) : '')
       setAfterRate(found.postWithdrawalInstallment ? String(found.postWithdrawalInstallment) : '')
+      setPay(meta.pay)
+      setInstallmentRise(meta.installmentRise ? String(meta.installmentRise) : '')
       const rows = plan.map((row) => ({ month: row.month.slice(0, 10), amount: String(Math.round(asNumber(row.scheduled_payout_amount))) }))
       setPlan(rows)
       if (rows.length > 0) {
@@ -104,8 +108,13 @@ export function ChitEditorPage() {
   const activeSeats = seats.filter((seat) => seat.status === 'active')
   const filled = activeSeats.reduce((total, seat) => total + seat.shares, 0)
   const rate = Number(normal) || 0
+  const riseAmount = Number(installmentRise) || 0
   const prizeTotal = schedules.reduce((total, row) => total + asNumber(row.scheduled_payout_amount), 0)
-  const collectedPlan = rate * Math.max(filled, shares || filled) * Math.max(months, schedules.length, 1)
+  const shareCount = Math.max(filled, shares || filled)
+  const monthTotal = Math.max(months, schedules.length, 1)
+  const collectedPlan = pay === 'commission'
+    ? commissionLifetimeCollections(monthTotal, shareCount, rate, riseAmount)
+    : rate * shareCount * monthTotal
   const meta = readChitMeta(group?.description)
 
   async function saveDetails(event: FormEvent) {
@@ -116,6 +125,8 @@ export function ChitEditorPage() {
     try {
       const next = writeChitMeta({
         ...meta,
+        pay,
+        installmentRise: pay === 'commission' ? riseAmount : null,
         pot: Number(pot) || null,
         shares: shares || null,
         months: months || null,
@@ -138,8 +149,9 @@ export function ChitEditorPage() {
           })
         }
       }
-      if (rate > 0 && rate !== group.normalInstallment) {
-        await updateScheme(groupId, rate, rate, 'Installment updated from the chit editor')
+      const schemePost = pay === 'commission' ? rate : (Number(afterRate) || rate)
+      if (rate > 0 && schemePost > 0 && (rate !== group.normalInstallment || schemePost !== group.postWithdrawalInstallment)) {
+        await updateScheme(groupId, rate, schemePost, 'Installment updated from the chit editor')
       }
       await reload()
     } catch (err) {
@@ -155,15 +167,30 @@ export function ChitEditorPage() {
     setError(null)
     try {
       const rate = Number(normal) || 0
-      const post = Number(afterRate) || rate
+      const post = pay === 'commission' ? rate : (Number(afterRate) || rate)
+      const riseAmount = Number(installmentRise) || 0
+      await updateGroup(
+        groupId,
+        name.trim() || group.name,
+        writeChitMeta({
+          ...meta,
+          pay,
+          installmentRise: pay === 'commission' ? riseAmount : null,
+        }),
+        life === 'completed' ? 'archived' : 'active',
+      )
       await importSchedules(
         groupId,
-        plan.filter((row) => Number(row.amount) > 0).map((row) => ({
-          month: row.month,
-          scheduled_payout_amount: Number(row.amount),
-          noted_normal_installment: rate || null,
-          noted_post_withdrawal_installment: post || null,
-        })),
+        plan.filter((row) => Number(row.amount) > 0).map((row) => {
+          const monthIndex = plan.findIndex((item) => item.month === row.month)
+          const due = commissionShareDue(monthIndex, rate, riseAmount)
+          return {
+            month: row.month,
+            scheduled_payout_amount: Number(row.amount),
+            noted_normal_installment: pay === 'commission' ? due : (rate || null),
+            noted_post_withdrawal_installment: pay === 'commission' ? due : (post || null),
+          }
+        }),
         'replace',
         false,
       )
@@ -259,24 +286,47 @@ export function ChitEditorPage() {
             <FieldLabel>Headline chit value (₹)</FieldLabel>
             <DeskInput value={pot} onChange={(event) => setPot(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
             <div className="mt-4">
-              <FieldLabel>Installment per share (₹)</FieldLabel>
+              <FieldLabel>{pay === 'commission' ? 'First month amount (₹)' : 'Installment per share (₹)'}</FieldLabel>
               <DeskInput value={normal} onChange={(event) => setNormal(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
-              <p className="mt-1 text-xs text-slate-400">This is the amount the ledger collects for one share. A person with more shares is shown as shares × this amount.</p>
+              <p className="mt-1 text-xs text-slate-400">
+                {pay === 'commission'
+                  ? `Every share pays this in month 1, then ${formatMoney(riseAmount)} more each month, whether that member has withdrawn or not.`
+                  : 'This is the amount the ledger collects for one share. A person with more shares is shown as shares × this amount.'}
+              </p>
             </div>
           </DeskCard>
           <DeskCard className="p-4">
-            <h2 className="text-sm font-semibold">Monthly plan</h2>
-            <p className="mt-1 text-xs text-slate-500">Same prize setup as a new chit. Fill writes every month, then save it onto this running chit.</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
-                <DeskInput value={normal} onChange={(event) => setNormal(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
-                <DeskInput value={afterRate} onChange={(event) => setAfterRate(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
-              </label>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">Monthly plan</h2>
+              <div className="flex rounded-full bg-slate-100 p-0.5 text-xs">
+                <button type="button" onClick={() => setPay('fixed')} className={`rounded-full px-2.5 py-1 ${pay === 'fixed' ? 'bg-white font-semibold' : ''}`}>Fixed</button>
+                <button type="button" onClick={() => setPay('commission')} className={`rounded-full px-2.5 py-1 ${pay === 'commission' ? 'bg-white font-semibold' : ''}`}>Commission</button>
+              </div>
             </div>
+            <p className="mt-1 text-xs text-slate-500">Same prize setup as a new chit. Fill writes every month, then save it onto this running chit.</p>
+            {pay === 'fixed' ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-slate-500">Before withdrawal</span>
+                  <DeskInput value={normal} onChange={(event) => setNormal(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-slate-500">After withdrawal</span>
+                  <DeskInput value={afterRate} onChange={(event) => setAfterRate(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+                </label>
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-slate-500">First month amount</span>
+                  <DeskInput value={normal} onChange={(event) => setNormal(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-slate-500">Rise each month</span>
+                  <DeskInput value={installmentRise} onChange={(event) => setInstallmentRise(event.target.value.replace(/[^\d]/g, ''))} placeholder="5500" inputMode="numeric" />
+                </label>
+              </div>
+            )}
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1 block text-[11px] font-medium text-slate-500">Starting amount</span>
@@ -414,7 +464,11 @@ export function ChitEditorPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <Link to={`/members/${seat.memberId}`} className="font-semibold">#{index + 1} · {seat.name}</Link>
-                  <p className="text-sm text-emerald-700">Pays ≈ {formatMoney(seat.shares * rate)} / mo · wins up to {formatMoney(Number(pot) || 0)}</p>
+                  <p className="text-sm text-emerald-700">
+                    {pay === 'commission'
+                      ? `Pays ${formatMoney(seat.shares * rate)} in month 1, then +${formatMoney(riseAmount)} each month`
+                      : `Pays ≈ ${formatMoney(seat.shares * rate)} / mo · wins up to ${formatMoney(Number(pot) || 0)}`}
+                  </p>
                 </div>
                 <button type="button" onClick={() => leave(seat)} className="rounded-xl bg-rose-50 px-3 py-2 text-rose-500" aria-label="Remove member">⌫</button>
               </div>

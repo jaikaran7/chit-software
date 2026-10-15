@@ -142,3 +142,16 @@ export function DeskInput(props: InputHTMLAttributes<HTMLInputElement>) {
     />
   )
 }
+
+export function DeskSkeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-2xl bg-slate-200 ${className}`} />
+}
+
+export function DeskSkeletonCard() {
+  return (
+    <DeskCard className="p-4">
+      <DeskSkeleton className="h-6 w-32" />
+      <DeskSkeleton className="mt-2 h-4 w-24" />
+    </DeskCard>
+  )
+}

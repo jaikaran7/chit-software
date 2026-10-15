@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { DeskCard, DeskSelect } from '../../components/desk-ui'
+import { DeskCard, DeskSelect, DeskSkeleton } from '../../components/desk-ui'
 import { isFutureMonth, monthChip, monthWindow, readChitMeta } from '../../lib/chitMeta'
 import { PAYMENT_METHODS, asNumber, currentMonth, errorMessage, formatMoney, formatMonth, formatShortDate, methodLabel, shiftMonth, todayIso } from '../../lib/format'
 import { getDashboard, listGroups, type GroupCard } from '../../services/groups'
@@ -314,12 +314,20 @@ export function DashboardPage() {
       <div className="mb-3 grid grid-cols-2 gap-2">
         <DeskCard className="p-3 sm:p-4">
           <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400">TOTAL IN</p>
-          <p className="mt-1 text-xl font-semibold tracking-tight text-emerald-700 sm:text-2xl">{totalsReady ? formatMoney(totalIn) : '…'}</p>
+          {totalsReady ? (
+            <p className="mt-1 text-xl font-semibold tracking-tight text-emerald-700 sm:text-2xl">{formatMoney(totalIn)}</p>
+          ) : (
+            <DeskSkeleton className="mt-1 h-8 w-24" />
+          )}
           <p className="mt-1 text-[11px] text-slate-400">{formatMonth(month)} · all chits</p>
         </DeskCard>
         <DeskCard className="p-3 sm:p-4">
           <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400">TOTAL OUT</p>
-          <p className="mt-1 text-xl font-semibold tracking-tight text-rose-600 sm:text-2xl">{totalsReady ? formatMoney(totalOut) : '…'}</p>
+          {totalsReady ? (
+            <p className="mt-1 text-xl font-semibold tracking-tight text-rose-600 sm:text-2xl">{formatMoney(totalOut)}</p>
+          ) : (
+            <DeskSkeleton className="mt-1 h-8 w-24" />
+          )}
           <p className="mt-1 text-[11px] text-slate-400">{formatMonth(month)} · prizes paid</p>
         </DeskCard>
       </div>
@@ -342,7 +350,11 @@ export function DashboardPage() {
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400">NET THIS MONTH</p>
-                <p className={`mt-1 text-xl font-semibold ${net >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{totalsReady ? formatMoney(net) : '…'}</p>
+                {totalsReady ? (
+                  <p className={`mt-1 text-xl font-semibold ${net >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatMoney(net)}</p>
+                ) : (
+                  <DeskSkeleton className="mt-1 h-7 w-28" />
+                )}
               </div>
               <p className="text-right text-[11px] text-slate-400">{sheets.length} chits</p>
             </div>
@@ -535,7 +547,7 @@ export function DashboardPage() {
                 {payLoading ? (
                   <p className="py-6 text-sm text-slate-400">Loading members…</p>
                 ) : payable.length === 0 ? (
-                  <p className="py-6 text-sm text-slate-400">Everyone who can take a prize has already been paid.</p>
+                  <p className="py-6 text-center text-sm text-slate-400">Everyone who can take a prize has already been paid.</p>
                 ) : (
                   <>
                     <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-2">

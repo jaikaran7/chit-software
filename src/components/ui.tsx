@@ -212,3 +212,34 @@ export function Empty({ title, body }: { title: string; body: string }) {
 export function methodText(method: string | null | undefined) {
   return methodLabel(method)
 }
+
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-2xl bg-slate-200 ${className}`} />
+}
+
+export function SkeletonKpi() {
+  return (
+    <div className="rounded-3xl bg-card px-4 py-3 ring-1 ring-line">
+      <Skeleton className="h-4 w-20" />
+      <Skeleton className="mt-2 h-8 w-24" />
+    </div>
+  )
+}
+
+export function SkeletonCard() {
+  return (
+    <Card>
+      <Skeleton className="h-6 w-32" />
+      <Skeleton className="mt-2 h-4 w-24" />
+    </Card>
+  )
+}
+
+export function SkeletonListItem() {
+  return (
+    <div className="px-4 py-3">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-1 h-4 w-28" />
+    </div>
+  )
+}

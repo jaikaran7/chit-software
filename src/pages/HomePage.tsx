@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Header, Kpi } from '../components/ui'
+import { Button, Card, Empty, Header, Kpi, Skeleton, SkeletonCard, SkeletonKpi, SkeletonListItem } from '../components/ui'
 import { currentMonth, errorMessage, formatMoney, formatShortDate, greeting } from '../lib/format'
 import { listMembers } from '../services/members'
 import { isRecorded, loadMonthMoney, type MonthMoney } from '../services/money'
@@ -11,10 +11,12 @@ export function HomePage() {
   const [money, setMoney] = useState<MonthMoney | null>(null)
   const [memberCount, setMemberCount] = useState<number | null>(null)
   const [recent, setRecent] = useState<ActivityItem[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const month = currentMonth()
+    setLoading(true)
     Promise.all([loadMonthMoney(month), listMembers(), listRecentActivity(6)])
       .then(([monthMoney, members, activity]) => {
         setMoney(monthMoney)
@@ -22,6 +24,7 @@ export function HomePage() {
         setRecent(activity)
       })
       .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => setLoading(false))
   }, [])
 
   const active = money?.groups.filter((group) => group.status === 'active') ?? []
@@ -35,24 +38,42 @@ export function HomePage() {
     <div>
       <Header eyebrow={greeting()} title="Home" />
       {error && <p className="mb-3 text-sm text-clay">{error}</p>}
-      <p className="mb-3 text-sm text-muted">
-        {money ? `${active.length} ${active.length === 1 ? 'group' : 'groups'}` : '…'}
-        {' · '}
-        {memberCount == null ? '…' : `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`}
-      </p>
+      {loading ? (
+        <Skeleton className="mb-3 h-5 w-48" />
+      ) : (
+        <p className="mb-3 text-sm text-muted">
+          {`${active.length} ${active.length === 1 ? 'group' : 'groups'}`}
+          {' · '}
+          {`${memberCount ?? 0} ${memberCount === 1 ? 'member' : 'members'}`}
+        </p>
+      )}
       <h2 className="mb-2 font-display text-2xl">This month</h2>
-      <div className="grid grid-cols-2 gap-3">
-        <Kpi label="Credit" value={money ? formatMoney(credit) : '…'} tone="grove" />
-        <Kpi label="Debit" value={money ? formatMoney(debit) : '…'} tone="clay" />
-        <Kpi label="Pending" value={money ? formatMoney(pending) : '…'} />
-        <Kpi label="Net" value={money ? formatMoney(credit - debit) : '…'} tone={!money || credit - debit >= 0 ? 'grove' : 'clay'} />
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3">
+          <SkeletonKpi />
+          <SkeletonKpi />
+          <SkeletonKpi />
+          <SkeletonKpi />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <Kpi label="Credit" value={formatMoney(credit)} tone="grove" />
+          <Kpi label="Debit" value={formatMoney(debit)} tone="clay" />
+          <Kpi label="Pending" value={formatMoney(pending)} />
+          <Kpi label="Net" value={formatMoney(credit - debit)} tone={credit - debit >= 0 ? 'grove' : 'clay'} />
+        </div>
+      )}
 
       <div className="mb-2 mt-6 flex items-center justify-between">
         <h2 className="font-display text-2xl">Groups</h2>
         <Link to="/groups/new" className="text-sm font-semibold text-grove">Add group</Link>
       </div>
-      {money && active.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : active.length === 0 ? (
         <Empty title="No groups yet" body="Add a group, set the monthly payout, and choose the members." />
       ) : (
         <div className="space-y-2">
@@ -79,7 +100,13 @@ export function HomePage() {
       )}
 
       <h2 className="mb-2 mt-6 font-display text-2xl">Recent</h2>
-      {recent.length === 0 ? (
+      {loading ? (
+        <div className="divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+          <SkeletonListItem />
+          <SkeletonListItem />
+          <SkeletonListItem />
+        </div>
+      ) : recent.length === 0 ? (
         <p className="text-sm text-muted">Payments you collect or send will show up here.</p>
       ) : (
         <div className="divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">

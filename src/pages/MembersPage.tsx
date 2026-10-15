@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Banner, Button, Field, Header, Kpi, StatusPill, controlClass } from '../components/ui'
+import { Banner, Button, Field, Header, Kpi, Skeleton, SkeletonKpi, SkeletonListItem, StatusPill, controlClass } from '../components/ui'
 import { currentMonth, errorMessage, formatMoney, formatMonth } from '../lib/format'
 import { listGroups, type GroupCard } from '../services/groups'
 import { createMember, listMembers, type MemberListItem } from '../services/members'
@@ -19,6 +19,7 @@ export function MembersPage({ creating = false }: { creating?: boolean }) {
   const [sheet, setSheet] = useState<CollectionRow[]>([])
   const [sheetGroup, setSheetGroup] = useState('')
   const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [mobile, setMobile] = useState('')
@@ -28,12 +29,14 @@ export function MembersPage({ creating = false }: { creating?: boolean }) {
   const month = currentMonth()
 
   useEffect(() => {
+    setLoading(true)
     Promise.all([listMembers(), listGroups()])
       .then(([people, groupRows]) => {
         setMembers(people)
         setGroups(groupRows)
       })
       .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -125,86 +128,129 @@ export function MembersPage({ creating = false }: { creating?: boolean }) {
 
       {!groupId ? (
         <>
-          <div className="mb-3">
-            <Kpi label="Total members" value={String(members.length)} />
-          </div>
-          <div className="divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
-            {activeGroups.map((group) => (
-              <button
-                key={group.id}
-                type="button"
-                onClick={() => {
-                  setGroupId(group.id)
-                  setQuery('')
-                }}
-                className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left"
-              >
-                <span className="font-semibold">{group.name}</span>
-                <span className="text-sm text-muted">{group.memberCount} {group.memberCount === 1 ? 'member' : 'members'}</span>
-              </button>
-            ))}
-          </div>
+          {loading ? (
+            <div className="mb-3">
+              <SkeletonKpi />
+            </div>
+          ) : (
+            <div className="mb-3">
+              <Kpi label="Total members" value={String(members.length)} />
+            </div>
+          )}
+          {loading ? (
+            <div className="divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+              <SkeletonListItem />
+              <SkeletonListItem />
+              <SkeletonListItem />
+            </div>
+          ) : (
+            <div className="divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+              {activeGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => {
+                    setGroupId(group.id)
+                    setQuery('')
+                  }}
+                  className="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <span className="font-semibold">{group.name}</span>
+                  <span className="text-sm text-muted">{group.memberCount} {group.memberCount === 1 ? 'member' : 'members'}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <input
             className={`${controlClass} mt-4`}
             placeholder="Search name or mobile"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <ul className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
-            {globalResults.map((member) => {
-              const names = member.group_memberships.map(groupName).filter(Boolean)
-              return (
-                <li key={member.id}>
-                  <Link to={`/members/${member.id}`} className="block px-4 py-3">
-                    <p className="font-semibold">{member.name}</p>
-                    <p className="text-sm text-muted">{member.mobile || 'No mobile'}</p>
-                    {names.length > 0 && (
-                      <div className="mt-1">
-                        {names.map((group) => (
-                          <p key={group} className="text-sm text-muted">{group}</p>
-                        ))}
-                      </div>
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-          {globalResults.length === 0 && <p className="mt-3 text-sm text-muted">No members match that search.</p>}
+          {loading ? (
+            <div className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+              <SkeletonListItem />
+              <SkeletonListItem />
+              <SkeletonListItem />
+            </div>
+          ) : (
+            <>
+              <ul className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+                {globalResults.map((member) => {
+                  const names = member.group_memberships.map(groupName).filter(Boolean)
+                  return (
+                    <li key={member.id}>
+                      <Link to={`/members/${member.id}`} className="block px-4 py-3">
+                        <p className="font-semibold">{member.name}</p>
+                        <p className="text-sm text-muted">{member.mobile || 'No mobile'}</p>
+                        {names.length > 0 && (
+                          <div className="mt-1">
+                            {names.map((group) => (
+                              <p key={group} className="text-sm text-muted">{group}</p>
+                            ))}
+                          </div>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+              {globalResults.length === 0 && <p className="mt-3 text-sm text-muted">No members match that search.</p>}
+            </>
+          )}
         </>
       ) : (
         <>
-          <p className="mb-2 text-sm text-muted">{selectedGroup?.name ?? 'Group'} · {formatMonth(month)}</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi label="Total members" value={loadingSheet ? '…' : String(currentSheet.length)} />
-            <Kpi label="Paid this month" value={loadingSheet ? '…' : String(paid)} tone="grove" />
-            <Kpi label="Partial" value={loadingSheet ? '…' : String(partial)} />
-            <Kpi label="Pending" value={loadingSheet ? '…' : String(pending)} tone="clay" />
-          </div>
+          {loading ? (
+            <Skeleton className="mb-2 h-5 w-40" />
+          ) : (
+            <p className="mb-2 text-sm text-muted">{selectedGroup?.name ?? 'Group'} · {formatMonth(month)}</p>
+          )}
+          {loading || loadingSheet ? (
+            <div className="grid grid-cols-2 gap-3">
+              <SkeletonKpi />
+              <SkeletonKpi />
+              <SkeletonKpi />
+              <SkeletonKpi />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Kpi label="Total members" value={String(currentSheet.length)} />
+              <Kpi label="Paid this month" value={String(paid)} tone="grove" />
+              <Kpi label="Partial" value={String(partial)} />
+              <Kpi label="Pending" value={String(pending)} tone="clay" />
+            </div>
+          )}
           <input
             className={`${controlClass} mt-4`}
             placeholder={`Search ${selectedGroup?.name ?? 'this group'}`}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          {loadingSheet ? (
-            <p className="mt-3 text-sm text-muted">Loading members…</p>
+          {loading || loadingSheet ? (
+            <div className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+              <SkeletonListItem />
+              <SkeletonListItem />
+              <SkeletonListItem />
+            </div>
           ) : (
-            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
-              {groupResults.map((row) => (
-                <li key={row.membership_id}>
-                  <Link to={`/memberships/${row.membership_id}`} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div>
-                      <p className="font-semibold">{row.member_name}</p>
-                      <p className="text-sm text-muted">{formatMoney(row.due)} due</p>
-                    </div>
-                    <StatusPill status={row.status} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="mt-3 divide-y divide-line overflow-hidden rounded-3xl bg-card ring-1 ring-line">
+                {groupResults.map((row) => (
+                  <li key={row.membership_id}>
+                    <Link to={`/memberships/${row.membership_id}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div>
+                        <p className="font-semibold">{row.member_name}</p>
+                        <p className="text-sm text-muted">{formatMoney(row.due)} due</p>
+                      </div>
+                      <StatusPill status={row.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {groupResults.length === 0 && <p className="mt-3 text-sm text-muted">No members match that search in this group.</p>}
+            </>
           )}
-          {!loadingSheet && groupResults.length === 0 && <p className="mt-3 text-sm text-muted">No members match that search in this group.</p>}
         </>
       )}
     </div>

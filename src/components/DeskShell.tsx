@@ -6,6 +6,7 @@ const links = [
   { to: '/chits', label: 'Chits', end: false, icon: ChitIcon },
   { to: '/members', label: 'Members', end: false, icon: PeopleIcon },
   { to: '/reports', label: 'Reports', end: false, icon: ChartIcon },
+  { to: '/settings', label: 'Settings', end: false, icon: SettingsIcon },
 ]
 
 export function DeskShell() {
@@ -160,6 +161,15 @@ function BellIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M6 16V10a6 6 0 1 1 12 0v6l1.5 2H4.5L6 16Z" />
       <path d="M10 19a2 2 0 0 0 4 0" />
+    </svg>
+  )
+}
+
+function SettingsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v6m0 6v10M3.2 9l5.2 3m7.2 0 5.2-3M3.2 15l5.2-3m7.2 0 5.2 3" />
     </svg>
   )
 }

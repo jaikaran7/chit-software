@@ -17,6 +17,7 @@ import { MemberProfilePage } from './pages/desk/MemberProfilePage'
 import { MembersDeskPage } from './pages/desk/MembersDeskPage'
 import { NewChitPage } from './pages/desk/NewChitPage'
 import { ReportsDeskPage } from './pages/desk/ReportsDeskPage'
+import { SettingsPage } from './pages/desk/SettingsPage'
 
 export default function App() {
   if (supabaseConfigError) {
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/receipts/:receiptId" element={<ReceiptPage />} />
         <Route path="/import" element={<ImportPage />} />
         <Route path="/reports" element={<ReportsDeskPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/more" element={<Navigate to="/chits" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
